@@ -33,7 +33,7 @@ Mandatory in every predicate: `producer{tool, version}`, `started`, `ended` (UTC
 `environment{host_os, run_mode}` where `run_mode` is `REAL`, `MOCK`, `FIXTURE` or `DRY-RUN`.
 Domain fields are added beside these. predicateTypes (base `https://ripplarity.com/attestation/`):
 - `sovkit/inventory/v1`, `sovkit/drill/v1`, `aiescrow/manifest/v1` (implemented).
-- `nukekit/mirror/v1`, `stillherd/silent/v1` (documented only; see `docs/MIGRATION_nukekit_stillherd.md`).
+- `dejaspawn/mirror/v1`, `stillherd/silent/v1` (documented only; see `docs/MIGRATION_nukekit_stillherd.md`). `nukekit/mirror/v1` is DEPRECATED (product renamed to dejaspawn); verifiers keep accepting it as a legacy URI.
 An unknown predicateType is not an error: the verifier checks the signature, prints `VALID-SIGNATURE`,
 warns, and exits 5.
 

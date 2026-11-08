@@ -13,7 +13,7 @@ Owned by another session; nothing here has been applied. Reference writers: `sov
 5. Emit `<name>.dsse.json` beside the existing output; keep the old signature file for one release.
 6. Copy `attest_verify.py` into `tools/` byte-identical and add a test asserting its sha256 equals the spec repo's.
 
-## nukekit (predicateType `https://ripplarity.com/attestation/nukekit/mirror/v1`)
+## dejaspawn, ex-nukekit (predicateType `https://ripplarity.com/attestation/dejaspawn/mirror/v1`; `.../nukekit/mirror/v1` DEPRECATED, accept as legacy on verify)
 - Subject: the mirror receipt/manifest file the writer already signs (name = file name, digest = sha256 of its bytes).
 - Predicate: existing receipt fields plus the mandatory block; `run_mode` = `MOCK` for fixture mirrors, `REAL` otherwise.
 - Diff-level: replace the `sign(canonical(receipt))` call with
