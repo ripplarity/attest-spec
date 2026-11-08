@@ -1,5 +1,7 @@
 # Ripplarity Attestation Format v1
 
+Revision 1.1 (2026-11-08): added predicateType `dejaspawn/mirror/v1`; `nukekit/mirror/v1` is a deprecated alias, still accepted.
+
 License: CC-BY-4.0 (spec), Apache-2.0 (code). Status: draft. Terminology: the signed statement is an
 **attestation**. A **receipt** means a transparency-log inclusion proof only.
 
