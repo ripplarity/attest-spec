@@ -2,6 +2,8 @@
 
 Revision 1.1 (2026-11-08): added predicateType `dejaspawn/mirror/v1`; `nukekit/mirror/v1` is a deprecated alias, still accepted.
 
+Revision 1.2 (2026-11-08): added predicateType `stillherd/day/v1` (daily attestation; subjects are the day's log files); specified Rekor anchoring and offline `--check-anchors` (exit 6).
+
 License: CC-BY-4.0 (spec), Apache-2.0 (code). Status: draft. Terminology: the signed statement is an
 **attestation**. A **receipt** means a transparency-log inclusion proof only.
 
@@ -35,7 +37,7 @@ Mandatory in every predicate: `producer{tool, version}`, `started`, `ended` (UTC
 `environment{host_os, run_mode}` where `run_mode` is `REAL`, `MOCK`, `FIXTURE` or `DRY-RUN`.
 Domain fields are added beside these. predicateTypes (base `https://ripplarity.com/attestation/`):
 - `sovkit/inventory/v1`, `sovkit/drill/v1`, `aiescrow/manifest/v1` (implemented).
-- `dejaspawn/mirror/v1`, `stillherd/silent/v1` (documented only; see `docs/MIGRATION_nukekit_stillherd.md`). `nukekit/mirror/v1` is DEPRECATED (product renamed to dejaspawn); verifiers keep accepting it as a legacy URI.
+- `dejaspawn/mirror/v1`, `stillherd/silent/v1`, `stillherd/day/v1` (documented only; see `docs/MIGRATION_nukekit_stillherd.md`). `nukekit/mirror/v1` is DEPRECATED (product renamed to dejaspawn); verifiers keep accepting it as a legacy URI.
 An unknown predicateType is not an error: the verifier checks the signature, prints `VALID-SIGNATURE`,
 warns, and exits 5.
 
@@ -49,14 +51,26 @@ artefact is untrusted unless it matches that pin. Re-signing a modified payload 
 fresh public key alongside must fail verification.
 
 ## 8. Transparency-log anchoring (optional)
-A Rekor `hashedrekord` entry over the sha256 of the DSSE envelope file; the inclusion proof is embedded in the
-envelope as `anchors[]` (an extra top-level array, outside the signed bytes). Verification uses the embedded
-proof offline. Anchoring MUST be opt-in (`--anchor rekor`), default OFF. Anchoring publishes the digest
-permanently and irrevocably. This specification only describes it; see `docs/ANCHORING.md`.
+Digest: `sha256` of the canonical JSON (section 4 convention) of the envelope with the `anchors` key removed.
+Entry: Rekor `hashedrekord` v0.0.1: `data.hash` = that digest, `signature.content` = ed25519 over the 32 raw digest
+bytes, `publicKey` = producer key PEM. The returned entry is appended to `anchors[]` (top-level, outside the signed
+bytes): `{type, url, uuid, logIndex, integratedTime, logID, body, signedEntryTimestamp, inclusionProof}`.
+Offline check (`attest_verify.py --check-anchors`, exit 6 on failure; `NO-ANCHORS` and the signature rc if none):
+(a) `body` digest equals the envelope digest and its signature verifies; (b) RFC 6962/9162 Merkle inclusion of
+`sha256(0x00 || body)` under `rootHash` at `treeSize` (and the embedded checkpoint's size/root agree);
+(c) the signedEntryTimestamp (ECDSA P-256 over canonical JSON of `{body, integratedTime, logID, logIndex}`) verifies
+under a PINNED Rekor public key supplied with `--rekor-key` (default `rekor.pub` beside the verifier); the verifier
+prints that key's sha256 and the pin MUST be compared with the value published by the Sigstore root of trust.
+Pinned Rekor key sha256: NOT YET RECORDED (the key is fetched once, from the Sigstore TUF root, at the first real
+anchor; no key is committed in this revision). The checkpoint's own log signature is not verified in this revision.
+Rekor is contacted only for freshness when `--online` is given; that is NOT implemented (the flag is rejected).
+Anchoring MUST be opt-in (`anchor.py --anchor rekor`, founder gate fq-193, env `ATTEST_ANCHOR_OK=1`), default OFF,
+and publishes the digest permanently and irrevocably. See `docs/ANCHORING.md`.
 
 ## 9. Verifier exit codes
 0 valid; 2 bad signature or unreadable envelope; 3 subject digest mismatch (`--check-subjects DIR`);
-4 malformed statement or missing mandatory fields; 5 unknown predicateType (after `VALID-SIGNATURE`).
+4 malformed statement or missing mandatory fields; 5 unknown predicateType (after `VALID-SIGNATURE`);
+6 anchor failure (`--check-anchors`); 7 anchoring refused by the founder gate (`anchor.py`).
 
 ## 10. Threat model and non-goals
 Detects: payload or signature tampering, subject file substitution (with `--check-subjects`), unknown-type
