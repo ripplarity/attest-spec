@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 
-from attest_verify import BASE, PAYLOAD_TYPE, keyid, pae
+from attest_verify import _L, _P, BASE, PAYLOAD_TYPE, decompress, jcs, keyid, pae
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -18,12 +18,6 @@ raw = priv.public_key().public_bytes(
 )
 open(f"{V}/test_key.ed25519", "w").write(seed.hex() + "\n")
 open(f"{V}/test_key.pub.hex", "w").write(raw.hex() + "\n")
-
-
-def canon(o):
-    return json.dumps(
-        o, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode()
 
 
 def stmt(ptype, name, extra):
@@ -46,35 +40,40 @@ def stmt(ptype, name, extra):
     }
 
 
-def env(payload, tweak=None):
+def env(payload, tweak=None, kid=None):
     sig = priv.sign(pae(PAYLOAD_TYPE, payload))
     if tweak:
         sig = tweak(sig)
     return {
         "payloadType": PAYLOAD_TYPE,
         "payload": base64.b64encode(payload).decode(),
-        "signatures": [{"keyid": keyid(raw), "sig": base64.b64encode(sig).decode()}],
+        "signatures": [
+            {"keyid": kid or keyid(raw), "sig": base64.b64encode(sig).decode()}
+        ],
     }
 
 
-def put(name, e, code, valid, reason):
+def put(name, e, code, valid, reason, key=None):
     with open(f"{V}/{name}.dsse.json", "w") as f:
         json.dump(e, f, indent=2)
         f.write("\n")
+    exp = {"valid": valid, "exit_code": code, "reason": reason}
+    if key:
+        exp["key"] = key
     with open(f"{V}/{name}.expected.json", "w") as f:
-        json.dump({"valid": valid, "exit_code": code, "reason": reason}, f, indent=2)
+        json.dump(exp, f, indent=2)
         f.write("\n")
 
 
-inv = canon(
+inv = jcs(
     stmt(
         BASE + "sovkit/inventory/v1", "inventory.json", {"objects": 3, "tenant": "tést"}
     )
 )
-drl = canon(
+drl = jcs(
     stmt(BASE + "sovkit/drill/v1", "drill.json", {"copied": 3, "diff_empty": True})
 )
-man = canon(
+man = jcs(
     stmt(
         BASE + "aiescrow/manifest/v1",
         "manifest.json",
@@ -96,11 +95,46 @@ b = bytearray(inv)
 b[40] ^= 1
 e["payload"] = base64.b64encode(bytes(b)).decode()
 put("05_mutated_payload", e, 2, False, "payload byte changed after signing")
-unk = canon(stmt("https://example.com/other/v1", "x.bin", {}))
+unk = jcs(stmt("https://example.com/other/v1", "x.bin", {}))
 put(
     "06_unknown_predicate_type",
     env(unk),
     5,
     True,
     "signature valid, unknown predicateType warns",
+)
+
+# strictness vectors (RFC 8032): all INVALID, rc 2
+put(
+    "07_noncanonical_s",
+    env(
+        inv,
+        lambda s: (
+            s[:32] + (int.from_bytes(s[32:], "little") + _L).to_bytes(32, "little")
+        ),
+    ),
+    2,
+    False,
+    "S >= L (malleable signature) must be rejected",
+)
+identity = (1).to_bytes(32, "little")  # point (0,1): small order
+open(f"{V}/08_small_order_key.pub.hex", "w").write(identity.hex() + "\n")
+put(
+    "08_small_order_key",
+    env(inv, lambda s: identity + bytes(32), kid=keyid(identity)),
+    2,
+    False,
+    "small-order public key must be rejected",
+    key="vectors/08_small_order_key.pub.hex",
+)
+y = 2
+while decompress(y.to_bytes(32, "little")) is not None:
+    y += 1
+assert y < _P
+put(
+    "09_malformed_r",
+    env(inv, lambda s: y.to_bytes(32, "little") + s[32:]),
+    2,
+    False,
+    "R is not a valid curve point",
 )

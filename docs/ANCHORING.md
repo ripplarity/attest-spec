@@ -1,4 +1,4 @@
-# Anchoring (Rekor) - opt-in, founder-gated (fq-193)
+# Anchoring (Rekor) - opt-in, requires explicit maintainer approval
 
 Code: `anchor.py` (writer, the only network-capable file) and `attest_verify.py --check-anchors` (offline, no network).
 Tests use a synthetic 4-leaf log and an injected transport; no test or default path contacts a network.
@@ -8,8 +8,8 @@ To the public, append-only Rekor log, permanently and irreversibly: the sha256 o
 removed), the ed25519 signature over that digest, and the producer public key (PEM). Nothing about the artefact
 contents is published, but the key links every anchored artefact to its producer.
 
-## Running the first real anchor (founder approval required)
-1. Founder approves fq-193 for the specific key.
+## Running the first real anchor (maintainer approval required)
+1. The maintainer explicitly approves anchoring for the specific key.
 2. `ATTEST_ANCHOR_OK=1 python anchor.py X.dsse.json --key <ed25519 seed hex file> --anchor rekor`
    (without the env var it exits 7 and sends nothing).
 3. Fetch the Rekor public key from the Sigstore TUF root, record its sha256 in SPEC.md section 8, save it as `rekor.pub`.

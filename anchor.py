@@ -5,7 +5,7 @@ Usage: ATTEST_ANCHOR_OK=1 python anchor.py <envelope.dsse.json> --key <ed25519 p
                                            --anchor rekor [--rekor-url URL]
 
 This PUBLISHES the envelope digest, signature and public key to a public append-only log,
-permanently. It is founder-gated (fq-193): without ATTEST_ANCHOR_OK=1 nothing is sent.
+permanently. It requires explicit maintainer approval: without ATTEST_ANCHOR_OK=1 nothing is sent.
 The transport is injectable (`post=`) so tests never touch the network.
 """
 
@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 DEFAULT_URL = "https://rekor.sigstore.dev"
 GATE_MSG = (
     "refused: anchoring publishes the envelope digest, signature and public key to a public log "
-    "permanently. It is founder-gated (fq-193); set ATTEST_ANCHOR_OK=1 only after approval."
+    "permanently. It requires explicit maintainer approval; set ATTEST_ANCHOR_OK=1 only after that approval."
 )
 
 

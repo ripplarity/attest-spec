@@ -22,6 +22,7 @@ PRIV = Ed25519PrivateKey.from_private_bytes(
     bytes.fromhex((ROOT / "vectors" / "test_key.ed25519").read_text().strip())
 )
 PUBHEX = str(ROOT / "vectors" / "test_key.pub.hex")
+PIN = hashlib.sha256(bytes.fromhex(open(PUBHEX).read().strip())).hexdigest()
 
 
 def H(b):
@@ -114,6 +115,8 @@ def run(env, pem, *extra):
             str(env),
             "--key",
             PUBHEX,
+            "--expect-keyid",
+            PIN,
             "--check-anchors",
             "--rekor-key",
             str(pem),
@@ -186,6 +189,8 @@ def test_no_anchors_prints_and_keeps_rc():
             str(VEC),
             "--key",
             PUBHEX,
+            "--expect-keyid",
+            PIN,
             "--check-anchors",
         ],
         capture_output=True,
@@ -211,7 +216,7 @@ def test_gate_refuses_without_env(tmp_path, monkeypatch):
     monkeypatch.delenv("ATTEST_ANCHOR_OK", raising=False)
     env = tmp_path / "e.dsse.json"
     shutil.copy(VEC, env)
-    with pytest.raises(anchor.AnchorGateError, match="fq-193"):
+    with pytest.raises(anchor.AnchorGateError, match="maintainer approval"):
         anchor.anchor_rekor(env, PRIV)
     r = subprocess.run(
         [
@@ -227,5 +232,5 @@ def test_gate_refuses_without_env(tmp_path, monkeypatch):
         text=True,
         env={k: v for k, v in os.environ.items() if k != "ATTEST_ANCHOR_OK"},
     )
-    assert r.returncode == 7 and "fq-193" in r.stderr
+    assert r.returncode == 7 and "ATTEST_ANCHOR_OK" in r.stderr
     assert "anchors" not in json.loads(env.read_text())

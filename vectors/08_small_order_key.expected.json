@@ -1,0 +1,6 @@
+{
+  "valid": false,
+  "exit_code": 2,
+  "reason": "small-order public key must be rejected",
+  "key": "vectors/08_small_order_key.pub.hex"
+}

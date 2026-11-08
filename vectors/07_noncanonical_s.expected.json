@@ -1,0 +1,5 @@
+{
+  "valid": false,
+  "exit_code": 2,
+  "reason": "S >= L (malleable signature) must be rejected"
+}

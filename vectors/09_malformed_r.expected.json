@@ -1,0 +1,5 @@
+{
+  "valid": false,
+  "exit_code": 2,
+  "reason": "R is not a valid curve point"
+}
