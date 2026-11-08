@@ -42,6 +42,9 @@ A producer keyid is published in three independent places: (a) the producing rep
 (b) `https://ripplarity.com/.well-known/attestation-keys.json`, a `keys.json` (section 5) document
 (publishing is a founder action, not yet done); (c) the key's first transparency-log entry (section 8).
 A verifier trusts a key only if it matches one of these, obtained out of band from the envelope.
+Verifiers MUST be given the trusted key (or its keyid, `--expect-keyid`) out of band; a key found beside the
+artefact is untrusted unless it matches that pin. Re-signing a modified payload with a fresh key and shipping the
+fresh public key alongside must fail verification.
 
 ## 8. Transparency-log anchoring (optional)
 A Rekor `hashedrekord` entry over the sha256 of the DSSE envelope file; the inclusion proof is embedded in the
