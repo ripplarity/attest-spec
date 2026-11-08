@@ -1,0 +1,5 @@
+{
+  "valid": true,
+  "exit_code": 5,
+  "reason": "signature valid, unknown predicateType warns"
+}

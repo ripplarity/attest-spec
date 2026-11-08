@@ -1,0 +1,5 @@
+{
+  "valid": false,
+  "exit_code": 2,
+  "reason": "payload byte changed after signing"
+}
