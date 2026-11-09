@@ -21,3 +21,21 @@ UNTESTED: whether live Rekor accepts an ed25519 signature over the raw 32-byte d
 ## Verification
 Offline from the embedded entry: digest match, producer signature, RFC 6962 inclusion proof, SET against the pinned
 Rekor key (exit 6 on any failure). `--online` (freshness against the live log) is reserved and not implemented.
+
+## Rekor public key (pinned for `--rekor-key`)
+`rekor.pub` was fetched on 2026-11-08 (UTC) with one read-only GET of `https://rekor.sigstore.dev/api/v1/log/publicKey`
+(ECDSA P-256, PEM). It has NOT yet been cross-checked against the Sigstore TUF root.
+sha256(rekor.pub) = `dce5ef715502ec9f3cdfd11f8cc384b31a6141023d3e7595e9908a81cb6241bd`
+SPEC section 8 still says the pin is not recorded; that line is updated in SPEC 1.4 (SPEC 1.3 is frozen).
+
+## Live test 2026-11-09
+Attempt: anchor `vectors/01_sovkit_inventory_valid.dsse.json` (TEST-ONLY key) with `ATTEST_ANCHOR_OK=1 python anchor.py ... --anchor rekor`.
+Result: REJECTED, nothing was published. Rekor answered HTTP 400:
+
+    {"code":400,"message":"error processing entry: verifying signature: unsupported hash algorithm: \"SHA-256\" not in [SHA-512]"}
+
+Meaning: the live log accepts an ed25519 `hashedrekord` only with a SHA-512 data hash (ed25519ph-style prehash), not the
+SHA-256 digest this writer sends. `build_entry` therefore needs a design change (SHA-512 digest and matching signature
+scheme, or a different entry kind such as `dsse`), which would also change the SPEC section 8 digest rule. No variant
+was tried; the request was replayed once only to capture the error body. Offline verification remains tested only
+against the synthetic log.
