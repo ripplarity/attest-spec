@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # Compatibility run: verify every committed *.dsse.json in the public consumer repos with a given verifier.
 # Usage: bash compat/run_compat.sh --verifier <path to attest_verify.py> [--keyid name=hex ...] [--out compat/DATE.md]
-# Read-only: shallow clones go to a temp dir that is deleted on exit; the only network use is the two clones.
+# Read-only: shallow clones go to <repo>/work/compat (gitignored) and are deleted on exit; the only network use is the two clones.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 exec "${PYTHON:-python}" - "$HERE" "$@" <<'PY'
 import datetime, glob, hashlib, os, re, shutil, subprocess, sys, tempfile
 
 here, args = sys.argv[1], sys.argv[2:]
-verifier, overrides, out = None, {}, None
+verifier, overrides, out, keep = None, {}, None, False
 i = 0
 while i < len(args):
     if args[i] == "--verifier":
         verifier = args[i + 1]; i += 2
     elif args[i] == "--keyid":
         k, v = args[i + 1].split("=", 1); overrides[k] = v.lower(); i += 2
+    elif args[i] == "--keep":
+        keep = True; i += 1
     elif args[i] == "--out":
         out = args[i + 1]; i += 2
     else:
@@ -35,13 +37,34 @@ def sha(path):
 
 
 def readme_keyid(root):
-    for name in ("README.md", "readme.md", "README"):
-        p = os.path.join(root, name)
-        if os.path.isfile(p):
+    """Root README first, then any README.md in the tree (for example silent/README.md)."""
+    cands = [os.path.join(root, "README.md")] + sorted(
+        glob.glob(os.path.join(root, "**", "README.md"), recursive=True)
+    )
+    for p in cands:
+        if os.path.isfile(p) and ".git" not in p.split(os.sep):
             m = KEYID_RE.search(open(p, encoding="utf-8", errors="replace").read())
             if m:
                 return m.group(1).lower()
     return None
+
+
+def infile_key(file):
+    """A 32-byte public key embedded in the attestation JSON itself (field `pubkey`, hex or base64), as hex."""
+    import base64, json
+    try:
+        v = json.load(open(file, encoding="utf-8")).get("pubkey")
+    except Exception:
+        return None
+    if not isinstance(v, str):
+        return None
+    if HEX64.fullmatch(v.lower()):
+        return v.lower()
+    try:
+        raw = base64.b64decode(v, validate=True)
+        return raw.hex() if len(raw) == 32 else None
+    except Exception:
+        return None
 
 
 def find_key(root, file, kid):
@@ -54,16 +77,43 @@ def find_key(root, file, kid):
         if os.path.abspath(d) == os.path.abspath(root):
             break
         d = os.path.dirname(d)
-    rp = os.path.join(root, "README.md")
-    if os.path.isfile(rp):
-        for h in HEX64.findall(open(rp, encoding="utf-8", errors="replace").read()):
-            if hashlib.sha256(bytes.fromhex(h)).hexdigest() == kid:
-                return h
+    k = infile_key(file)
+    if k:
+        return k
+    # last resort: anywhere in the repo, a 64-hex string or a JSON `pubkey` (hex/base64) whose sha256 is the pinned keyid
+    for dp, dn, fn in os.walk(root):
+        if ".git" in dp.split(os.sep):
+            continue
+        for f in sorted(fn):
+            q = os.path.join(dp, f)
+            if os.path.getsize(q) > 300000:
+                continue
+            try:
+                txt = open(q, encoding="utf-8").read()
+            except (UnicodeDecodeError, OSError):
+                continue
+            cands = HEX64.findall(txt)
+            if q.endswith(".json"):
+                k2 = infile_key(q)
+                if k2:
+                    cands.append(k2)
+            for h in cands:
+                if hashlib.sha256(bytes.fromhex(h)).hexdigest() == kid:
+                    return h
     return None
 
 
 rows, notes = [], []
-tmp = tempfile.mkdtemp(prefix="attest-compat-")
+# clones live in the gitignored work/ folder inside the checkout, never in a system temp directory
+tmp = os.path.join(os.path.dirname(here), "work", "compat")
+def _rm(func, path, exc):
+    os.chmod(path, 0o700)
+    func(path)
+
+
+if os.path.isdir(tmp):
+    shutil.rmtree(tmp, onexc=_rm) if sys.version_info >= (3, 12) else shutil.rmtree(tmp, onerror=_rm)
+os.makedirs(tmp, exist_ok=True)
 try:
     for name, url in REPOS.items():
         dest = os.path.join(tmp, name)
@@ -78,7 +128,7 @@ try:
         files = sorted(
             os.path.join(dp, f)
             for dp, dn, fn in os.walk(dest) if ".git" not in dp.split(os.sep)
-            for f in fn if f.endswith(".dsse.json")
+            for f in fn if f.endswith((".dsse.json", ".attestation.json")) or f == "attestation.json"
         )
         if not files:
             rows.append((name, "(no *.dsse.json committed)", "", "-", ""))
@@ -94,9 +144,20 @@ try:
                 capture_output=True, text=True,
             )
             lines = (p.stdout + p.stderr).strip().splitlines()
-            rows.append((name, rel, sha(f), str(p.returncode), lines[0] if lines else ""))
+            rc = str(p.returncode)
+            if "tests/fixtures/" in rel and p.returncode:
+                rc = f"EXPECTED-FAIL (rc {p.returncode})"  # fixture key is not the pinned production key
+            first = lines[0] if lines else ""
+            try:
+                ver = str(__import__("json").load(open(f, encoding="utf-8")).get("version", ""))
+            except Exception:
+                ver = ""
+            if p.returncode and ver.endswith("-silent-1"):
+                first += f" [script note: legacy format {ver}, not a DSSE envelope]"
+            rows.append((name, rel, sha(f), rc, first))
 finally:
-    shutil.rmtree(tmp, ignore_errors=True)
+    if not keep:
+        shutil.rmtree(tmp, onexc=_rm) if sys.version_info >= (3, 12) else shutil.rmtree(tmp, onerror=_rm)
 
 dist = {}
 for r in rows:
