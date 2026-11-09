@@ -66,8 +66,42 @@ Domain fields are added beside these. predicateTypes (base `https://ripplarity.c
   `canceltogether/campaign/v1`, `buyatheorem/lemma/v1`.
 - Full-URI entries (producers under their own domain): `https://udoot.com/attestation/egress/v1` (Android
   network-egress receipts; subject `netlog.jsonl`). A predicateType need not sit under the ripplarity base.
+- Added in 1.5 (draft): `verdict/v1` (section 6.1).
 An unknown predicateType is not an error: the verifier checks the signature, prints `VALID-SIGNATURE`,
 warns, and exits 5.
+
+### 6.1 `verdict/v1`: the signed result of probing a software claim
+URI: `https://ripplarity.com/attestation/verdict/v1`. The mandatory fields above apply, plus these predicate
+fields (all REQUIRED unless marked optional). `verdict_check.py` implements them; `attest_verify.py` calls it
+and exits 4 (malformed predicate) on any violation.
+- `claim{text, source_url?}`: `text` non-empty; `source_url`, if present, an http(s) URL.
+- `subject_tool{name, version}`: the tool probed; both non-empty strings.
+- `probe{id, version, sha256}`: `sha256` is the lowercase-hex SHA-256 of the probe code that ran.
+- `inputs_digest`, `transcript_digest`: lowercase-hex SHA-256 (64 chars) of the probe inputs and of the run transcript.
+- `controls`: a non-empty list of `{name, kind, expected, observed}`; `kind` is `positive` or `negative`.
+- `result`: exactly `PASS`, `FAIL` or `INCONCLUSIVE` (case-sensitive).
+- `observed_at`: RFC3339 UTC timestamp ending in `Z` (no numeric offsets).
+Normative:
+1. `controls` MUST contain at least one `positive` control (an input the claim says works, run through the same
+   probe, showing the probe can see success).
+2. For EVERY control, `observed` MUST equal `expected` (same JSON type and value). If any differs, the verdict is
+   INVALID whatever `result` says: the probe is not trusted. A producer with a failed control MUST NOT sign
+   `PASS` or `FAIL`; it signs nothing, or `INCONCLUSIVE` with the controls recorded as observed (a verifier
+   still rejects that statement under this rule; it is a record, not an accepted verdict).
+3. A verifier MUST reject (exit 4) a verdict whose `result` is outside the enum or whose digests, timestamp or
+   controls break the shapes above.
+4. The statement subject SHOULD be the transcript file, so `--check-subjects` binds it to `transcript_digest`.
+Example predicate (shown without the mandatory fields):
+```json
+{"claim":{"text":"tool X rejects empty input","source_url":"https://example.com/claim"},
+ "subject_tool":{"name":"example-tool","version":"1.0.0"},
+ "probe":{"id":"empty-input","version":"1","sha256":"<64 hex>"},
+ "inputs_digest":"<64 hex>","transcript_digest":"<64 hex>","result":"PASS",
+ "controls":[{"name":"known-good input accepted","kind":"positive","expected":"accept","observed":"accept"},
+             {"name":"known-bad input rejected","kind":"negative","expected":"reject","observed":"reject"}],
+ "observed_at":"2026-01-01T00:00:00Z"}
+```
+Vectors `11_verdict_valid` (exit 0) and `12_verdict_failed_control` (exit 4, good signature).
 
 ## 7. Key pinning
 Verifiers MUST be given the trusted key (or its keyid, `--expect-keyid`) out of band; a key found beside the
@@ -113,7 +147,7 @@ lies in a signed predicate, rollback or deletion of attestations (needs a log), 
 are self-reported unless anchored). Non-goals: key revocation, encryption, a network protocol.
 
 ## 11. Test vectors
-`vectors/` holds ten vectors made with a committed TEST-ONLY key (public and worthless): three valid (one per
+`vectors/` holds twelve vectors (ten below, plus two verdict vectors, section 6.1) made with a committed TEST-ONLY key (public and worthless): three valid (one per
 implemented predicateType), bad signature, mutated payload byte, unknown predicateType, and three strictness
 vectors (non-canonical S, small-order key, malformed R) and a mixed-order key (prime-order point plus an 8-torsion
-component), all rejected with exit 2. `bash vectors/run.sh` pins the keyid and prints `10/10 OK`.
+component), all rejected with exit 2. `bash vectors/run.sh` pins the keyid and prints `12/12 OK`.

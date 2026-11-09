@@ -37,6 +37,7 @@ KNOWN = {
     BASE + "halflife/receipt/v1",
     BASE + "canceltogether/campaign/v1",
     BASE + "buyatheorem/lemma/v1",
+    BASE + "verdict/v1",
     "https://udoot.com/attestation/egress/v1",  # separate developer identity; full URI, not under BASE
 }
 RUN_MODES = {"REAL", "MOCK", "FIXTURE", "DRY-RUN"}
@@ -138,16 +139,28 @@ def encode_point(pt) -> bytes:
 
 
 _B = decompress(bytes.fromhex("58" + "66" * 31))
-_DOM_PH = b"SigEd25519 no Ed25519 collisions" + bytes([1, 0])  # dom2(1, "") for Ed25519ph
+_DOM_PH = b"SigEd25519 no Ed25519 collisions" + bytes(
+    [1, 0]
+)  # dom2(1, "") for Ed25519ph
 
 
 def ed25519ph_verify(pub: bytes, digest64: bytes, sig: bytes) -> bool:
     """RFC 8032 Ed25519ph, empty context, where `digest64` is already PH(M) = SHA-512(M).
     Cofactorless: [S]B == R + [k]A, with canonical S and prime-order A and R."""
-    if len(pub) != 32 or len(sig) != 64 or len(digest64) != 64 or strict_ed25519_ok(pub, sig):
+    if (
+        len(pub) != 32
+        or len(sig) != 64
+        or len(digest64) != 64
+        or strict_ed25519_ok(pub, sig)
+    ):
         return False
     a, r = decompress(pub), decompress(sig[:32])
-    k = int.from_bytes(hashlib.sha512(_DOM_PH + sig[:32] + pub + digest64).digest(), "little") % _L
+    k = (
+        int.from_bytes(
+            hashlib.sha512(_DOM_PH + sig[:32] + pub + digest64).digest(), "little"
+        )
+        % _L
+    )
     return _mul(int.from_bytes(sig[32:], "little"), _B) == _add(r, _mul(k, a))
 
 
@@ -317,13 +330,21 @@ def _check_one_anchor(env: dict, an: dict, rekor_pem: bytes) -> str:
     body = base64.b64decode(an["body"], validate=True)
     spec = json.loads(body)
     h = spec["spec"]["data"]["hash"]
-    if spec.get("kind") != "hashedrekord" or h["algorithm"] != "sha512" or h["value"] != digest:
+    if (
+        spec.get("kind") != "hashedrekord"
+        or h["algorithm"] != "sha512"
+        or h["value"] != digest
+    ):
         return "anchored digest does not match this envelope"
     pem = base64.b64decode(spec["spec"]["signature"]["publicKey"]["content"])
     pub = serialization.load_pem_public_key(pem).public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     )
-    if not ed25519ph_verify(pub, bytes.fromhex(digest), base64.b64decode(spec["spec"]["signature"]["content"])):
+    if not ed25519ph_verify(
+        pub,
+        bytes.fromhex(digest),
+        base64.b64decode(spec["spec"]["signature"]["content"]),
+    ):
         return "entry signature (Ed25519ph over the sha512 digest) does not verify"
     pr = an["inclusionProof"]
     leaf = _h(b"\x00" + body)
@@ -381,7 +402,10 @@ def check_anchors(a) -> int:
     kh = hashlib.sha256(pem).hexdigest()
     print("rekor key sha256:", kh)
     if not a.rekor_key and kh != REKOR_KEY_SHA256:
-        print("ANCHOR-FAIL: default rekor.pub does not match the pinned sha256", file=sys.stderr)
+        print(
+            "ANCHOR-FAIL: default rekor.pub does not match the pinned sha256",
+            file=sys.stderr,
+        )
         return 6
     for i, an in enumerate(anchors):
         try:
@@ -472,6 +496,13 @@ def _verify(a) -> int:
     if why:
         print(f"MALFORMED: {why}", file=sys.stderr)
         return 4
+    if ptype == BASE + "verdict/v1":
+        import verdict_check
+
+        why = verdict_check.check_verdict(pred)
+        if why:
+            print(f"MALFORMED: {why}", file=sys.stderr)
+            return 4
     print(f"VALID {ptype}")
     return 0
 

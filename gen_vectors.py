@@ -161,3 +161,44 @@ put(
     "public key has a torsion component ([L]A != O) and must be rejected",
     key="vectors/10_mixed_order_key.pub.hex",
 )
+
+
+# ---- verdict predicateType (SPEC 6.1) ----
+def _verdict(controls):
+    def h(s):
+        return hashlib.sha256(s.encode()).hexdigest()
+
+    return {
+        "claim": {
+            "text": "tool X rejects empty input",
+            "source_url": "https://example.com/claim",
+        },
+        "subject_tool": {"name": "example-tool", "version": "1.0.0"},
+        "probe": {"id": "empty-input", "version": "1", "sha256": h("probe-code")},
+        "inputs_digest": h("inputs"),
+        "controls": controls,
+        "result": "PASS",
+        "transcript_digest": h("transcript"),
+        "observed_at": "2026-01-01T00:00:00Z",
+    }
+
+
+_ok = [
+    {"name": "known-good input accepted", "kind": "positive", "expected": "accept", "observed": "accept"},
+    {"name": "known-bad input rejected", "kind": "negative", "expected": "reject", "observed": "reject"},
+]
+_bad = [dict(_ok[0], observed="reject"), _ok[1]]
+put(
+    "11_verdict_valid",
+    env(jcs(stmt(BASE + "verdict/v1", "transcript.txt", _verdict(_ok)))),
+    0,
+    True,
+    "valid",
+)
+put(
+    "12_verdict_failed_control",
+    env(jcs(stmt(BASE + "verdict/v1", "transcript.txt", _verdict(_bad)))),
+    4,
+    False,
+    "a control observed differs from expected; verdict invalid (signature is good)",
+)

@@ -1,0 +1,5 @@
+{
+  "valid": false,
+  "exit_code": 4,
+  "reason": "a control observed differs from expected; verdict invalid (signature is good)"
+}
