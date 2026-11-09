@@ -169,10 +169,19 @@ A verifier MAY offer a policy requiring N >= 2 distinct pinned keyids (`--requir
    signed by both keys still counts once; a missing envelope fails);
 4. the required keyids are pairwise different (a repeated keyid is rejected); `--expect-keyid` is not accepted;
 5. each `--require-keyid` value is exactly 64 lowercase hex characters, byte for byte; it is never lowercased or
-   trimmed (one byte form everywhere, as for envelope keyids), and any other form exits 2.
+   trimmed (one byte form everywhere, as for envelope keyids), and any other form exits 2;
+6. every supplied envelope's Statement has a KNOWN predicateType (section 6) and a predicate carrying the mandatory
+   fields (section 6), exactly as single-key verification requires;
+7. no signature (its decoded bytes) appears in more than one supplied envelope. Ed25519 is deterministic, so the
+   same key over the same payload always gives the same bytes: passing one envelope twice, a byte copy, a
+   re-serialised copy, a copy with signatures reordered, or a copy with a signature added or removed is one signing
+   act counted twice, and is rejected;
+8. at most 64 envelopes are supplied; matching (rule 3) is a bipartite matching, not a search over orderings.
 
 Exit codes: 0 policy met; 2 bad signature, unknown signer keyid, required key not supplied, duplicate or fewer than
-two keyids, or policy unmet (missing or reused envelope); 3 an envelope does not name the artifact digest;
-4 unreadable or malformed envelope, key or artifact. Precedence: 4, then 2 (signature), then 3, then 2 (policy).
+two keyids, more than 64 envelopes, a signature reused across envelopes (rule 7), or policy unmet (missing or reused
+envelope); 3 an envelope does not name the artifact digest; 4 unreadable or malformed envelope, key or artifact,
+including a missing mandatory predicate field; 5 an unknown predicateType. Precedence: 4, then 2 (signature), then
+3, then 5, then 2 (reuse, then policy).
 This stops a valid CI attestation from a compromised pipeline being accepted without the maintainer's key; it does
 not help if both keys are compromised.

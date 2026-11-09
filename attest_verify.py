@@ -436,8 +436,12 @@ def check_anchors(a) -> int:
     return 0
 
 
+MAX_POLICY_ENVELOPES = 64
+
+
 def _policy_envelope(path, by_id):
-    """Return (rc, signer keyids, subject sha256 set). rc != 0 is the exit code."""
+    """Return (rc, info). rc != 0 is the exit code; info = (signers {keyid: sig bytes}, subject sha256 set,
+    predicateType, predicate)."""
     try:
         env = json.load(open(path, encoding="utf-8"))
         if env["payloadType"] != PAYLOAD_TYPE:
@@ -451,16 +455,16 @@ def _policy_envelope(path, by_id):
         ]
     except Exception as e:
         print(f"UNREADABLE: {path}: {e}", file=sys.stderr)
-        return 4, None, None
+        return 4, None
     msg = pae(env["payloadType"], payload)
-    signers = set()
+    signers = {}
     for kid, sig in entries:
         raw = by_id.get(kid)
         if raw is None:
             print(
                 f"INVALID: {path}: keyid {kid} is not a supplied key", file=sys.stderr
             )
-            return 2, None, None
+            return 2, None
         why = strict_ed25519_ok(raw, sig)
         if not why:
             try:
@@ -469,8 +473,8 @@ def _policy_envelope(path, by_id):
                 why = "signature does not verify"
         if why:
             print(f"INVALID: {path}: {why}", file=sys.stderr)
-            return 2, None, None
-        signers.add(kid)
+            return 2, None
+        signers.setdefault(kid, set()).add(sig)
     try:
         st = json.loads(payload)
         if st["_type"] != STATEMENT_TYPE:
@@ -482,16 +486,34 @@ def _policy_envelope(path, by_id):
             if not subject_name_ok(s.get("name")) or not _hex64(s["digest"]["sha256"]):
                 raise ValueError("bad subject")
             digs.add(s["digest"]["sha256"])
+        ptype, pred = st["predicateType"], st["predicate"]
+        why = check_mandatory(pred)
+        if why:
+            raise ValueError(why)
     except Exception as e:
         print(f"MALFORMED: {path}: {e}", file=sys.stderr)
-        return 4, None, None
-    return 0, signers, digs
+        return 4, None
+    return 0, (signers, digs, ptype)
+
+
+def _match(req, cands) -> bool:
+    """Bipartite matching (Kuhn): can every required keyid get its own envelope? cands[i] = envelope indexes."""
+    owner = {}
+
+    def take(i, seen):
+        for j in cands[i]:
+            if j not in seen:
+                seen.add(j)
+                if j not in owner or take(owner[j], seen):
+                    owner[j] = i
+                    return True
+        return False
+
+    return all(take(i, set()) for i in range(len(req)))
 
 
 def policy_verify(a) -> int:
     """Multi-signer policy (SPEC s12): each required keyid needs a distinct envelope."""
-    import itertools
-
     req = list(a.require_keyid)
     for k in req:
         if len(k) != 64 or any(c not in "0123456789abcdef" for c in k):
@@ -525,23 +547,49 @@ def policy_verify(a) -> int:
         if k not in by_id:
             print(f"INVALID: required keyid {k} is not a supplied key", file=sys.stderr)
             return 2
+    if len(a.envelope) > MAX_POLICY_ENVELOPES:
+        print(
+            f"INVALID: more than {MAX_POLICY_ENVELOPES} envelopes in policy mode",
+            file=sys.stderr,
+        )
+        return 2
     infos = []
     for path in a.envelope:
-        rc, signers, digs = _policy_envelope(path, by_id)
+        rc, info = _policy_envelope(path, by_id)
         if rc:
             return rc
-        infos.append((path, signers, digs))
-    for path, _, digs in infos:
+        infos.append((path,) + info)
+    for path, _, digs, _ in infos:
         if want not in digs:
             print(
                 f"SUBJECT-MISMATCH: {path} does not name the artifact sha256",
                 file=sys.stderr,
             )
             return 3
-    for perm in itertools.permutations(range(len(infos)), len(req)):
-        if all(req[i] in infos[j][1] for i, j in enumerate(perm)):
-            print("VALID-POLICY " + " ".join(req))
-            return 0
+    for path, _, _, ptype in infos:
+        if ptype not in KNOWN:
+            print(
+                f"WARNING: {path}: unknown predicateType {ptype}; policy not evaluated",
+                file=sys.stderr,
+            )
+            return 5
+    # Ed25519 is deterministic: the same signature bytes in two envelopes are one signing act, whether the
+    # second envelope is the same path, a byte copy, a reordered copy or a copy with an extra signature.
+    seen = {}
+    for j, (path, signers, _, _) in enumerate(infos):
+        for sigs in signers.values():
+            for sig in sigs:
+                if seen.setdefault(sig, j) != j:
+                    print(
+                        f"INVALID: {path} reuses a signature already in {infos[seen[sig]][0]}"
+                        " (one envelope counted twice)",
+                        file=sys.stderr,
+                    )
+                    return 2
+    cands = [[j for j, inf in enumerate(infos) if k in inf[1]] for k in req]
+    if _match(req, cands):
+        print("VALID-POLICY " + " ".join(req))
+        return 0
     print(
         "INVALID: policy not met (missing signer or one envelope reused)",
         file=sys.stderr,

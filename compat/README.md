@@ -18,7 +18,8 @@ What it does:
 5. Runs `python <verifier> <file> --key <key> --expect-keyid <keyid>` and writes `compat/<UTC date>.md`: repo, file,
    sha256 of the file, exit code, first output line, plus the verifier's own sha256 and each repo's commit.
    Files under `tests/fixtures/` that fail the pin are recorded `EXPECTED-FAIL (rc N)` (fixture keys are not the
-   production key). Legacy-format attestations (not DSSE envelopes) get rc 4 from the verifier; the script appends a
+   production key). `tests/fixtures/timeline/home/days/fx.dsse.json` in stillherd is a deliberately malformed
+   fixture (its payload is not valid base64), so it is EXPECTED-FAIL with rc 4 under every verifier. Legacy-format attestations (not DSSE envelopes) get rc 4 from the verifier; the script appends a
    "legacy format" note to the line. `--keep` leaves the clones in `work/compat` for inspection.
 
 Baselines are committed so a new verifier version can be compared line by line: re-run with the new verifier and diff the

@@ -20,12 +20,21 @@ def raw_of(k):
     )
 
 
-def env(path, signers, digest=SHA, tamper=False):
+PTYPE = av.BASE + "halflife/receipt/v1"
+PRED = {
+    "producer": {"tool": "t", "version": "1"},
+    "started": "2026-11-09T00:00:00Z",
+    "ended": "2026-11-09T00:00:01Z",
+    "environment": {"host_os": "linux", "run_mode": "REAL"},
+}
+
+
+def env(path, signers, digest=SHA, tamper=False, ptype=PTYPE, pred=None):
     st = {
         "_type": av.STATEMENT_TYPE,
         "subject": [{"name": "pkg.tgz", "digest": {"sha256": digest}}],
-        "predicateType": "https://example.com/p/v1",
-        "predicate": {},
+        "predicateType": ptype,
+        "predicate": PRED if pred is None else pred,
     }
     payload = json.dumps(st).encode()
     sigs = [
@@ -122,3 +131,78 @@ def test_require_keyid_must_be_exact_lowercase_hex(tmp_path):
     assert run(tmp_path, [e1, e2], [cid.upper(), mid], keys) == 2
     assert run(tmp_path, [e1, e2], [" " + cid, mid], keys) == 2
     assert run(tmp_path, [e1, e2], [cid[:-1], mid], keys) == 2
+
+
+def _both(tmp_path):
+    ci, mt, cid, mid, keys = setup()
+    return env(tmp_path / "a.json", [ci, mt]), cid, mid, keys
+
+
+def test_same_envelope_path_twice_rejected(tmp_path):
+    a, cid, mid, keys = _both(tmp_path)
+    assert run(tmp_path, [a], [cid, mid], keys) == 2
+    assert run(tmp_path, [a, a], [cid, mid], keys) == 2
+
+
+def test_byte_copy_rejected(tmp_path):
+    a, cid, mid, keys = _both(tmp_path)
+    b = tmp_path / "copy.json"
+    b.write_bytes(Path(a).read_bytes())
+    assert run(tmp_path, [a, str(b)], [cid, mid], keys) == 2
+
+
+def test_reordered_signatures_rejected(tmp_path):
+    a, cid, mid, keys = _both(tmp_path)
+    e = json.loads(Path(a).read_text())
+    e["signatures"].reverse()
+    b = tmp_path / "rev.json"
+    b.write_text(json.dumps(e))
+    assert run(tmp_path, [a, str(b)], [cid, mid], keys) == 2
+
+
+def test_rewrapped_with_extra_signature_rejected(tmp_path):
+    ci, mt, cid, mid, keys = setup()
+    x = Ed25519PrivateKey.generate()
+    a = env(tmp_path / "a.json", [ci, mt])
+    b = env(tmp_path / "b.json", [mt, x])  # mt's signature bytes equal those in a (Ed25519 is deterministic)
+    assert run(tmp_path, [a, b], [cid, mid], keys + [raw_of(x)]) == 2
+    c = env(tmp_path / "c.json", [mt])  # the subset re-wrap is the same signing act too
+    assert run(tmp_path, [a, c], [cid, mid], keys) == 2
+
+
+def test_unknown_predicate_type_is_5(tmp_path):
+    ci, mt, cid, mid, keys = setup()
+    e1 = env(tmp_path / "a.json", [ci], ptype="https://example.com/p/v1")
+    e2 = env(tmp_path / "b.json", [mt])
+    assert run(tmp_path, [e1, e2], [cid, mid], keys) == 5
+
+
+def test_missing_mandatory_predicate_is_4(tmp_path):
+    ci, mt, cid, mid, keys = setup()
+    e1 = env(tmp_path / "a.json", [ci], pred={})
+    e2 = env(tmp_path / "b.json", [mt])
+    assert run(tmp_path, [e1, e2], [cid, mid], keys) == 4
+
+
+def test_envelope_cap(tmp_path):
+    ci, mt, cid, mid, keys = setup()
+    many = [env(tmp_path / f"e{i}.json", [ci]) for i in range(av.MAX_POLICY_ENVELOPES + 1)]
+    assert run(tmp_path, many, [cid, mid], keys) == 2
+
+
+def test_matching_needs_augmenting_path(tmp_path):
+    # e1 signed by ci+mt, e2 by ci only: a greedy pick of e1 for ci would fail; matching must give ci->e2, mt->e1.
+    # Same statement, so e2's ci signature equals e1's: use a different artifact-naming statement for e2.
+    ci, mt, cid, mid, keys = setup()
+    e1 = env(tmp_path / "a.json", [ci, mt])
+    e2 = env(tmp_path / "b.json", [ci], pred=dict(PRED, ended="2026-11-09T00:00:02Z"))
+    assert run(tmp_path, [e1, e2], [cid, mid], keys) == 0
+
+
+def test_reserialised_copy_rejected(tmp_path):
+    a, cid, mid, keys = _both(tmp_path)
+    e = json.loads(Path(a).read_text())
+    b = tmp_path / "reser.json"
+    b.write_text(json.dumps({k: e[k] for k in reversed(list(e))}, indent=3, sort_keys=False))
+    assert Path(a).read_bytes() != b.read_bytes()
+    assert run(tmp_path, [a, str(b)], [cid, mid], keys) == 2
