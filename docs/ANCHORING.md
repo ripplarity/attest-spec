@@ -15,8 +15,8 @@ contents is published, but the key links every anchored artefact to its producer
 3. Fetch the Rekor public key from the Sigstore TUF root, record its sha256 in SPEC.md section 8, save it as `rekor.pub`.
 4. `python attest_verify.py X.dsse.json --key <pub> --expect-keyid <id> --check-anchors --rekor-key rekor.pub`
    must print `ANCHORS-OK 1`.
-UNTESTED: whether live Rekor accepts an ed25519 signature over the raw 32-byte digest in a `hashedrekord`
-(the test log is synthetic). If step 2 is rejected, adjust `build_entry` (e.g. use PKIX/ed25519ph) and re-test.
+TESTED 2026-11-09 (see "Live test" below): live Rekor REJECTS an ed25519 `hashedrekord` whose data hash is SHA-256
+("not in [SHA-512]"). `build_entry` must move to a SHA-512 data hash; that change lands in spec revision 1.4.
 
 ## Verification
 Offline from the embedded entry: digest match, producer signature, RFC 6962 inclusion proof, SET against the pinned

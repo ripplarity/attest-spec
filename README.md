@@ -44,7 +44,7 @@ python -m pytest -q tests
 | Statement | in-toto Statement v1; subjects are relative POSIX paths with sha256 digests |
 | Canonical form | RFC 8785 (JCS) payload bytes, written once and never re-serialised by verifiers |
 | Keys | strict RFC 8032 ed25519; keyid = sha256 of the raw public key; the pin is mandatory |
-| Anchoring | optional Rekor anchoring with an offline `--check-anchors` check, off by default (`docs/ANCHORING.md`) |
+| Anchoring | optional Rekor anchoring, off by default; the offline `--check-anchors` verifier works against a synthetic log, but the writer is not yet accepted by live Rekor (it requires a SHA-512 hashedrekord; design change pending in revision 1.4, see `docs/ANCHORING.md`) |
 
 The normative text is [`SPEC.md`](SPEC.md). Writing attestations from another tool: [`docs/MIGRATION_other_writers.md`](docs/MIGRATION_other_writers.md).
 
