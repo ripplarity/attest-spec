@@ -37,6 +37,7 @@ KNOWN = {
     BASE + "halflife/receipt/v1",
     BASE + "canceltogether/campaign/v1",
     BASE + "buyatheorem/lemma/v1",
+    BASE + "udoot/egress/v1",
 }
 RUN_MODES = {"REAL", "MOCK", "FIXTURE", "DRY-RUN"}
 MAX_INT = 2**53 - 1
