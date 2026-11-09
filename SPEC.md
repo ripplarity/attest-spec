@@ -1,5 +1,9 @@
 # Ripplarity Attestation Format v1
 
+Revision 1.5 (2026-11-09): (1) a draft verdict predicateType with its own checker `verdict_check.py` (section 6.1;
+vectors 11-14); the verifier stays generic; (2) an optional multi-signer policy, `--require-keyid` repeated (section
+12). Compatibility: nothing about envelopes, payloads or single-key verification changed; every attestation a 1.4
+verifier accepts, a 1.5 verifier accepts with the same exit code.
 Revision 1.4 (2026-11-09): (1) the Rekor entry digest is SHA-512 of JCS(envelope minus `anchors`), signed as Ed25519ph
 (Rekor rejects an ed25519 hashedrekord with any other hash; section 8), and the Rekor key sha256 is pinned; (2) keys and
 R MUST be prime-order ([L]A = O), with the cofactorless equation stated (section 5); (3) five predicateTypes added
@@ -155,3 +159,20 @@ are self-reported unless anchored). Non-goals: key revocation, encryption, a net
 implemented predicateType), bad signature, mutated payload byte, unknown predicateType, and three strictness
 vectors (non-canonical S, small-order key, malformed R) and a mixed-order key (prime-order point plus an 8-torsion
 component), all rejected with exit 2. `bash vectors/run.sh` pins the keyid and prints `14/14 OK`.
+
+## 12. Multi-signer policy (optional)
+A verifier MAY offer a policy requiring N >= 2 distinct pinned keyids (`--require-keyid K1 --require-keyid K2
+--artifact FILE ENV1 ENV2 ... --key KEYS`). It accepts only if ALL hold, offline:
+1. every supplied envelope passes sections 1-5 (strict signatures; every signature keyid is a supplied key);
+2. every supplied envelope carries a Statement (section 3) with a subject whose sha256 equals the sha256 of FILE;
+3. each required keyid is matched to a DISTINCT envelope carrying a valid signature by that keyid (an envelope
+   signed by both keys still counts once; a missing envelope fails);
+4. the required keyids are pairwise different (a repeated keyid is rejected); `--expect-keyid` is not accepted;
+5. each `--require-keyid` value is exactly 64 lowercase hex characters, byte for byte; it is never lowercased or
+   trimmed (one byte form everywhere, as for envelope keyids), and any other form exits 2.
+
+Exit codes: 0 policy met; 2 bad signature, unknown signer keyid, required key not supplied, duplicate or fewer than
+two keyids, or policy unmet (missing or reused envelope); 3 an envelope does not name the artifact digest;
+4 unreadable or malformed envelope, key or artifact. Precedence: 4, then 2 (signature), then 3, then 2 (policy).
+This stops a valid CI attestation from a compromised pipeline being accepted without the maintainer's key; it does
+not help if both keys are compromised.

@@ -139,16 +139,28 @@ def encode_point(pt) -> bytes:
 
 
 _B = decompress(bytes.fromhex("58" + "66" * 31))
-_DOM_PH = b"SigEd25519 no Ed25519 collisions" + bytes([1, 0])  # dom2(1, "") for Ed25519ph
+_DOM_PH = b"SigEd25519 no Ed25519 collisions" + bytes(
+    [1, 0]
+)  # dom2(1, "") for Ed25519ph
 
 
 def ed25519ph_verify(pub: bytes, digest64: bytes, sig: bytes) -> bool:
     """RFC 8032 Ed25519ph, empty context, where `digest64` is already PH(M) = SHA-512(M).
     Cofactorless: [S]B == R + [k]A, with canonical S and prime-order A and R."""
-    if len(pub) != 32 or len(sig) != 64 or len(digest64) != 64 or strict_ed25519_ok(pub, sig):
+    if (
+        len(pub) != 32
+        or len(sig) != 64
+        or len(digest64) != 64
+        or strict_ed25519_ok(pub, sig)
+    ):
         return False
     a, r = decompress(pub), decompress(sig[:32])
-    k = int.from_bytes(hashlib.sha512(_DOM_PH + sig[:32] + pub + digest64).digest(), "little") % _L
+    k = (
+        int.from_bytes(
+            hashlib.sha512(_DOM_PH + sig[:32] + pub + digest64).digest(), "little"
+        )
+        % _L
+    )
     return _mul(int.from_bytes(sig[32:], "little"), _B) == _add(r, _mul(k, a))
 
 
@@ -234,8 +246,19 @@ def check_mandatory(pred) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("envelope")
+    ap.add_argument("envelope", nargs="+")
     ap.add_argument("--key", required=True)
+    ap.add_argument(
+        "--require-keyid",
+        action="append",
+        metavar="HEX",
+        help="multi-signer policy (SPEC s12): repeat; each keyid needs its own envelope",
+    )
+    ap.add_argument(
+        "--artifact",
+        metavar="FILE",
+        help="artifact whose sha256 every envelope must name (policy mode)",
+    )
     ap.add_argument("--check-subjects", metavar="DIR")
     ap.add_argument(
         "--expect-keyid",
@@ -258,6 +281,12 @@ def main(argv=None) -> int:
         help="reserved: freshness check (not implemented)",
     )
     a = ap.parse_args(argv)
+    if a.require_keyid:
+        return policy_verify(a)
+    if len(a.envelope) != 1:
+        print("exactly one envelope unless --require-keyid is used", file=sys.stderr)
+        return 2
+    a.envelope = a.envelope[0]
     if not a.expect_keyid:
         print(
             "pinned keyid required (SPEC s7): pass --expect-keyid <hex>",
@@ -318,13 +347,21 @@ def _check_one_anchor(env: dict, an: dict, rekor_pem: bytes) -> str:
     body = base64.b64decode(an["body"], validate=True)
     spec = json.loads(body)
     h = spec["spec"]["data"]["hash"]
-    if spec.get("kind") != "hashedrekord" or h["algorithm"] != "sha512" or h["value"] != digest:
+    if (
+        spec.get("kind") != "hashedrekord"
+        or h["algorithm"] != "sha512"
+        or h["value"] != digest
+    ):
         return "anchored digest does not match this envelope"
     pem = base64.b64decode(spec["spec"]["signature"]["publicKey"]["content"])
     pub = serialization.load_pem_public_key(pem).public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw
     )
-    if not ed25519ph_verify(pub, bytes.fromhex(digest), base64.b64decode(spec["spec"]["signature"]["content"])):
+    if not ed25519ph_verify(
+        pub,
+        bytes.fromhex(digest),
+        base64.b64decode(spec["spec"]["signature"]["content"]),
+    ):
         return "entry signature (Ed25519ph over the sha512 digest) does not verify"
     pr = an["inclusionProof"]
     leaf = _h(b"\x00" + body)
@@ -382,7 +419,10 @@ def check_anchors(a) -> int:
     kh = hashlib.sha256(pem).hexdigest()
     print("rekor key sha256:", kh)
     if not a.rekor_key and kh != REKOR_KEY_SHA256:
-        print("ANCHOR-FAIL: default rekor.pub does not match the pinned sha256", file=sys.stderr)
+        print(
+            "ANCHOR-FAIL: default rekor.pub does not match the pinned sha256",
+            file=sys.stderr,
+        )
         return 6
     for i, an in enumerate(anchors):
         try:
@@ -394,6 +434,119 @@ def check_anchors(a) -> int:
             return 6
     print(f"ANCHORS-OK {len(anchors)}")
     return 0
+
+
+def _policy_envelope(path, by_id):
+    """Return (rc, signer keyids, subject sha256 set). rc != 0 is the exit code."""
+    try:
+        env = json.load(open(path, encoding="utf-8"))
+        if env["payloadType"] != PAYLOAD_TYPE:
+            raise ValueError("payloadType must equal " + PAYLOAD_TYPE)
+        payload = base64.b64decode(env["payload"], validate=True)
+        sigs = env["signatures"]
+        if not isinstance(sigs, list) or not sigs:
+            raise ValueError("no signatures")
+        entries = [
+            (s["keyid"], base64.b64decode(s["sig"], validate=True)) for s in sigs
+        ]
+    except Exception as e:
+        print(f"UNREADABLE: {path}: {e}", file=sys.stderr)
+        return 4, None, None
+    msg = pae(env["payloadType"], payload)
+    signers = set()
+    for kid, sig in entries:
+        raw = by_id.get(kid)
+        if raw is None:
+            print(
+                f"INVALID: {path}: keyid {kid} is not a supplied key", file=sys.stderr
+            )
+            return 2, None, None
+        why = strict_ed25519_ok(raw, sig)
+        if not why:
+            try:
+                Ed25519PublicKey.from_public_bytes(raw).verify(sig, msg)
+            except (InvalidSignature, ValueError):
+                why = "signature does not verify"
+        if why:
+            print(f"INVALID: {path}: {why}", file=sys.stderr)
+            return 2, None, None
+        signers.add(kid)
+    try:
+        st = json.loads(payload)
+        if st["_type"] != STATEMENT_TYPE:
+            raise ValueError("wrong _type")
+        if not st["subject"]:
+            raise ValueError("empty subject")
+        digs = set()
+        for s in st["subject"]:
+            if not subject_name_ok(s.get("name")) or not _hex64(s["digest"]["sha256"]):
+                raise ValueError("bad subject")
+            digs.add(s["digest"]["sha256"])
+    except Exception as e:
+        print(f"MALFORMED: {path}: {e}", file=sys.stderr)
+        return 4, None, None
+    return 0, signers, digs
+
+
+def policy_verify(a) -> int:
+    """Multi-signer policy (SPEC s12): each required keyid needs a distinct envelope."""
+    import itertools
+
+    req = list(a.require_keyid)
+    for k in req:
+        if len(k) != 64 or any(c not in "0123456789abcdef" for c in k):
+            print(
+                "INVALID: --require-keyid must be 64 lowercase hex chars",
+                file=sys.stderr,
+            )
+            return 2
+    if len(set(req)) != len(req):
+        print(
+            "INVALID: duplicate --require-keyid (one key cannot count twice)",
+            file=sys.stderr,
+        )
+        return 2
+    if len(req) < 2:
+        print("policy needs at least two --require-keyid", file=sys.stderr)
+        return 2
+    if not a.artifact or a.expect_keyid:
+        print(
+            "policy mode needs --artifact and takes no --expect-keyid", file=sys.stderr
+        )
+        return 2
+    try:
+        keys = load_keys(a.key)
+        want = sha256_file(a.artifact)
+    except Exception as e:
+        print(f"UNREADABLE: key or artifact: {e}", file=sys.stderr)
+        return 4
+    by_id = {keyid(k): k for k in keys}
+    for k in req:
+        if k not in by_id:
+            print(f"INVALID: required keyid {k} is not a supplied key", file=sys.stderr)
+            return 2
+    infos = []
+    for path in a.envelope:
+        rc, signers, digs = _policy_envelope(path, by_id)
+        if rc:
+            return rc
+        infos.append((path, signers, digs))
+    for path, _, digs in infos:
+        if want not in digs:
+            print(
+                f"SUBJECT-MISMATCH: {path} does not name the artifact sha256",
+                file=sys.stderr,
+            )
+            return 3
+    for perm in itertools.permutations(range(len(infos)), len(req)):
+        if all(req[i] in infos[j][1] for i, j in enumerate(perm)):
+            print("VALID-POLICY " + " ".join(req))
+            return 0
+    print(
+        "INVALID: policy not met (missing signer or one envelope reused)",
+        file=sys.stderr,
+    )
+    return 2
 
 
 def _verify(a) -> int:

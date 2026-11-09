@@ -8,25 +8,28 @@ exec "${PYTHON:-python}" - "$HERE" "$@" <<'PY'
 import datetime, glob, hashlib, os, re, shutil, subprocess, sys, tempfile
 
 here, args = sys.argv[1], sys.argv[2:]
-verifier, overrides, out, keep = None, {}, None, False
+verifier, overrides, out, keep, extra = None, {}, None, False, {}
 i = 0
 while i < len(args):
     if args[i] == "--verifier":
         verifier = args[i + 1]; i += 2
     elif args[i] == "--keyid":
         k, v = args[i + 1].split("=", 1); overrides[k] = v.lower(); i += 2
+    elif args[i] == "--repo":
+        k, v = args[i + 1].split("=", 1); extra[k] = v; i += 2
     elif args[i] == "--keep":
         keep = True; i += 1
     elif args[i] == "--out":
         out = args[i + 1]; i += 2
     else:
-        sys.exit("usage: run_compat.sh --verifier PATH [--keyid name=hex] [--out FILE]")
+        sys.exit("usage: run_compat.sh --verifier PATH [--keyid name=hex] [--repo name=URL_OR_LOCAL_PATH] [--out FILE]")
 if not verifier or not os.path.isfile(verifier):
     sys.exit("--verifier <path to attest_verify.py> is required")
 verifier = os.path.abspath(verifier)
 today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 out = out or os.path.join(here, today + ".md")
 REPOS = {n: f"https://github.com/ripplarity/{n}" for n in ("stillherd", "dejaspawn")}
+REPOS.update(extra)  # --repo: extra repos, e.g. a local worktree path (git clone reads it, nothing is written there)
 HEX64 = re.compile(r"\b[0-9a-f]{64}\b")
 # keyid grep: a line mentioning "keyid" in the README, first 64-hex token on it (or the next line)
 KEYID_RE = re.compile(r"keyid[^\n]*?([0-9a-f]{64})", re.I)
