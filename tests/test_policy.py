@@ -97,9 +97,16 @@ def test_same_key_twice(tmp_path):
     assert run(tmp_path, [e1, e2], [cid, mid], keys) == 2
 
 
-def test_one_envelope_two_signers_not_enough(tmp_path):
+def test_one_envelope_two_signers_is_enough(tmp_path):
+    # SPEC s12 (1.5): envelopes are containers; two distinct keys signed, so the policy is met.
     ci, mt, cid, mid, keys = setup()
     e1 = env(tmp_path / "a.json", [ci, mt])
+    assert run(tmp_path, [e1], [cid, mid], keys) == 0
+
+
+def test_same_keyid_twice_in_one_envelope_counts_once(tmp_path):
+    ci, mt, cid, mid, keys = setup()
+    e1 = env(tmp_path / "a.json", [ci, ci])
     assert run(tmp_path, [e1], [cid, mid], keys) == 2
 
 
@@ -140,7 +147,7 @@ def _both(tmp_path):
 
 def test_same_envelope_path_twice_rejected(tmp_path):
     a, cid, mid, keys = _both(tmp_path)
-    assert run(tmp_path, [a], [cid, mid], keys) == 2
+    assert run(tmp_path, [a], [cid, mid], keys) == 0
     assert run(tmp_path, [a, a], [cid, mid], keys) == 2
 
 
@@ -164,7 +171,9 @@ def test_rewrapped_with_extra_signature_rejected(tmp_path):
     ci, mt, cid, mid, keys = setup()
     x = Ed25519PrivateKey.generate()
     a = env(tmp_path / "a.json", [ci, mt])
-    b = env(tmp_path / "b.json", [mt, x])  # mt's signature bytes equal those in a (Ed25519 is deterministic)
+    b = env(
+        tmp_path / "b.json", [mt, x]
+    )  # mt's signature bytes equal those in a (Ed25519 is deterministic)
     assert run(tmp_path, [a, b], [cid, mid], keys + [raw_of(x)]) == 2
     c = env(tmp_path / "c.json", [mt])  # the subset re-wrap is the same signing act too
     assert run(tmp_path, [a, c], [cid, mid], keys) == 2
@@ -184,10 +193,11 @@ def test_missing_mandatory_predicate_is_4(tmp_path):
     assert run(tmp_path, [e1, e2], [cid, mid], keys) == 4
 
 
-def test_envelope_cap(tmp_path):
+def test_split_into_two_envelopes_same_statement(tmp_path):
+    # repackaging a dual-signed envelope into two single-signer ones: both keys did sign, nothing counted twice
     ci, mt, cid, mid, keys = setup()
-    many = [env(tmp_path / f"e{i}.json", [ci]) for i in range(av.MAX_POLICY_ENVELOPES + 1)]
-    assert run(tmp_path, many, [cid, mid], keys) == 2
+    e1, e2 = env(tmp_path / "a.json", [ci]), env(tmp_path / "b.json", [mt])
+    assert run(tmp_path, [e1, e2], [cid, mid], keys) == 0
 
 
 def test_matching_needs_augmenting_path(tmp_path):
@@ -203,6 +213,8 @@ def test_reserialised_copy_rejected(tmp_path):
     a, cid, mid, keys = _both(tmp_path)
     e = json.loads(Path(a).read_text())
     b = tmp_path / "reser.json"
-    b.write_text(json.dumps({k: e[k] for k in reversed(list(e))}, indent=3, sort_keys=False))
+    b.write_text(
+        json.dumps({k: e[k] for k in reversed(list(e))}, indent=3, sort_keys=False)
+    )
     assert Path(a).read_bytes() != b.read_bytes()
     assert run(tmp_path, [a, str(b)], [cid, mid], keys) == 2

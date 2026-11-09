@@ -1,7 +1,6 @@
 import base64
 import copy
 import hashlib
-import itertools
 import json
 import os
 import random
@@ -89,10 +88,8 @@ def model(texts, req):
             return False
     if any(h not in d for _, d in sets):
         return False
-    return any(
-        all(req[i] in sets[j][0] for i, j in enumerate(pm))
-        for pm in itertools.permutations(range(len(sets)), len(req))
-    )
+    signed = set().union(*(s for s, _ in sets)) if sets else set()
+    return all(r in signed for r in req)  # envelopes are containers (SPEC s12 rule 3)
 
 
 def base():

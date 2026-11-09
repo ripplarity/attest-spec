@@ -436,9 +436,6 @@ def check_anchors(a) -> int:
     return 0
 
 
-MAX_POLICY_ENVELOPES = 64
-
-
 def _policy_envelope(path, by_id):
     """Return (rc, info). rc != 0 is the exit code; info = (signers {keyid: sig bytes}, subject sha256 set,
     predicateType, predicate)."""
@@ -496,24 +493,8 @@ def _policy_envelope(path, by_id):
     return 0, (signers, digs, ptype)
 
 
-def _match(req, cands) -> bool:
-    """Bipartite matching (Kuhn): can every required keyid get its own envelope? cands[i] = envelope indexes."""
-    owner = {}
-
-    def take(i, seen):
-        for j in cands[i]:
-            if j not in seen:
-                seen.add(j)
-                if j not in owner or take(owner[j], seen):
-                    owner[j] = i
-                    return True
-        return False
-
-    return all(take(i, set()) for i in range(len(req)))
-
-
 def policy_verify(a) -> int:
-    """Multi-signer policy (SPEC s12): each required keyid needs a distinct envelope."""
+    """Multi-signer policy (SPEC s12): each required keyid needs its own valid signature; envelopes are containers."""
     req = list(a.require_keyid)
     for k in req:
         if len(k) != 64 or any(c not in "0123456789abcdef" for c in k):
@@ -547,12 +528,6 @@ def policy_verify(a) -> int:
         if k not in by_id:
             print(f"INVALID: required keyid {k} is not a supplied key", file=sys.stderr)
             return 2
-    if len(a.envelope) > MAX_POLICY_ENVELOPES:
-        print(
-            f"INVALID: more than {MAX_POLICY_ENVELOPES} envelopes in policy mode",
-            file=sys.stderr,
-        )
-        return 2
     infos = []
     for path in a.envelope:
         rc, info = _policy_envelope(path, by_id)
@@ -586,12 +561,15 @@ def policy_verify(a) -> int:
                         file=sys.stderr,
                     )
                     return 2
-    cands = [[j for j, inf in enumerate(infos) if k in inf[1]] for k in req]
-    if _match(req, cands):
+    # Envelopes are containers: each required keyid needs one valid signature over a statement naming the artifact.
+    signed = set()
+    for _, signers, _, _ in infos:
+        signed |= set(signers)
+    if all(k in signed for k in req):
         print("VALID-POLICY " + " ".join(req))
         return 0
     print(
-        "INVALID: policy not met (missing signer or one envelope reused)",
+        "INVALID: policy not met (a required keyid has no valid signature)",
         file=sys.stderr,
     )
     return 2

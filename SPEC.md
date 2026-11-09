@@ -93,11 +93,17 @@ Normative:
    verifiers keep it as evidence and `verdict_check.py` exits 8 (VERDICT-NOT-TRUSTED). The same exit 8 applies
    to a missing positive control, to `PASS` or `FAIL` with a failed control, and to rule 4.
 3. A verdict whose shape is broken (`result` outside the enum, bad digests, non-UTC timestamp, absent or
-   malformed `controls`) is malformed: `verdict_check.py` exits 4. Exit 0 means accepted.
+   malformed `controls`) is malformed: `verdict_check.py` exits 4. Exit 0 means accepted and prints
+   `VERDICT-ACCEPTED result=<PASS|FAIL|INCONCLUSIVE>`: accepted means the record can be trusted, not that the
+   claim passed. Timestamps and digests use ASCII digits only (`[0-9]`, never a Unicode digit class). Control
+   values compare equal only with the same JSON type at every nesting level.
 4. The transcript file MUST be a statement subject: `transcript_digest` MUST equal the sha256 of one subject,
    else exit 8.
 5. `attest_verify.py` only registers the URI (signature, subject and mandatory-field checks); the domain rules
-   above run only in `python verdict_check.py <envelope>`.
+   above run only in `python verdict_check.py <envelope> --key KEYS --expect-keyid KEYID`.
+6. Trust requires `attest_verify.py` exit 0 on the same envelope with the same pinned keyid. `verdict_check.py`
+   accepts only a DSSE envelope and runs that verification first; it returns attest_verify's code (2, 3, 4 or 5)
+   when that is not 0, so an unsigned statement or a tampered signature is never accepted.
 Example predicate (shown without the mandatory fields):
 ```json
 {"claim":{"text":"tool X rejects empty input","source_url":"https://example.com/claim"},
@@ -165,8 +171,9 @@ A verifier MAY offer a policy requiring N >= 2 distinct pinned keyids (`--requir
 --artifact FILE ENV1 ENV2 ... --key KEYS`). It accepts only if ALL hold, offline:
 1. every supplied envelope passes sections 1-5 (strict signatures; every signature keyid is a supplied key);
 2. every supplied envelope carries a Statement (section 3) with a subject whose sha256 equals the sha256 of FILE;
-3. each required keyid is matched to a DISTINCT envelope carrying a valid signature by that keyid (an envelope
-   signed by both keys still counts once; a missing envelope fails);
+3. each required keyid has its own valid signature (distinct signature bytes) over a statement naming the artifact.
+   Envelopes are containers: one envelope signed by both keys meets the policy, as do two single-signer envelopes
+   over the same statement; a keyid listed more than once counts as one key; a missing signature fails;
 4. the required keyids are pairwise different (a repeated keyid is rejected); `--expect-keyid` is not accepted;
 5. each `--require-keyid` value is exactly 64 lowercase hex characters, byte for byte; it is never lowercased or
    trimmed (one byte form everywhere, as for envelope keyids), and any other form exits 2;
@@ -175,12 +182,11 @@ A verifier MAY offer a policy requiring N >= 2 distinct pinned keyids (`--requir
 7. no signature (its decoded bytes) appears in more than one supplied envelope. Ed25519 is deterministic, so the
    same key over the same payload always gives the same bytes: passing one envelope twice, a byte copy, a
    re-serialised copy, a copy with signatures reordered, or a copy with a signature added or removed is one signing
-   act counted twice, and is rejected;
-8. at most 64 envelopes are supplied; matching (rule 3) is a bipartite matching, not a search over orderings.
+   act counted twice, and is rejected.
 
 Exit codes: 0 policy met; 2 bad signature, unknown signer keyid, required key not supplied, duplicate or fewer than
-two keyids, more than 64 envelopes, a signature reused across envelopes (rule 7), or policy unmet (missing or reused
-envelope); 3 an envelope does not name the artifact digest; 4 unreadable or malformed envelope, key or artifact,
+two keyids, a signature reused across envelopes (rule 7), or policy unmet (a required keyid has no valid
+signature); 3 an envelope does not name the artifact digest; 4 unreadable or malformed envelope, key or artifact,
 including a missing mandatory predicate field; 5 an unknown predicateType. Precedence: 4, then 2 (signature), then
 3, then 5, then 2 (reuse, then policy).
 This stops a valid CI attestation from a compromised pipeline being accepted without the maintainer's key; it does

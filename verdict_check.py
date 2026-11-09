@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """Predicate validator for the `verdict` predicateType (SPEC section 6.1).
 
-Library: `check_verdict(predicate) -> str` ("" when valid, else a reason).
-CLI: `python verdict_check.py ENVELOPE`; exit 0 accepted, 4 malformed shape,
-8 VERDICT-NOT-TRUSTED. Signature checking is attest_verify.py's job; it does
-not call this module.
+Library: `check_verdict(predicate) -> str` ("" when valid, else a reason); `check_trust(predicate, subjects)`.
+CLI: `python verdict_check.py ENVELOPE --key KEYS --expect-keyid KEYID`. Only a DSSE envelope is accepted, and
+attest_verify.py's full verification runs on it first (strict signature, pinned keyid, subject, mandatory fields):
+an unsigned or tampered statement can never be accepted. Exit codes: attest_verify's own code (2, 3, 4, 5) when it
+does not return 0; 4 not an envelope or malformed verdict shape; 8 VERDICT-NOT-TRUSTED; 0 accepted, printed as
+"VERDICT-ACCEPTED result=<PASS|FAIL|INCONCLUSIVE>" (accepted means the record is trustworthy, not that the claim passed).
+attest_verify.py does not call this module.
 """
 
 import base64
+import contextlib
+import io
 import json
+import os
 import re
 import sys
 
@@ -16,7 +22,21 @@ VERDICT_TYPE = "https://ripplarity.com/attestation/verdict/v1"
 RESULTS = ("PASS", "FAIL", "INCONCLUSIVE")
 KINDS = ("positive", "negative")
 HEX64 = re.compile(r"[0-9a-f]{64}")
-RFC3339_UTC = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z")
+# [0-9], never \d: \d also matches non-ASCII digits (Arabic-Indic, fullwidth, ...)
+RFC3339_UTC = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?Z"
+)
+
+
+def same(a, b) -> bool:
+    """Equality that also requires the same JSON type at every level (true != 1, 1 != 1.0, nested too)."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
+    if isinstance(a, list):
+        return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b))
+    return a == b
 
 
 def _nonempty(v) -> bool:
@@ -78,9 +98,7 @@ def check_verdict(p) -> str:
 def check_trust(p, subjects) -> str:
     """Domain rules on a well-shaped predicate; "" = accepted, else why NOT TRUSTED (rc 8)."""
     for k in p["controls"]:
-        if k["expected"] != k["observed"] or type(k["expected"]) is not type(
-            k["observed"]
-        ):
+        if not same(k["expected"], k["observed"]):
             return f"control failed: {k['name']} (observed differs from expected)"
     if not any(k["kind"] == "positive" for k in p["controls"]):
         return "no positive control present"
@@ -95,14 +113,36 @@ def check_trust(p, subjects) -> str:
 
 
 def main(argv=None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 1:
-        print("usage: verdict_check.py ENVELOPE", file=sys.stderr)
-        return 2
+    import argparse
+
+    ap = argparse.ArgumentParser(prog="verdict_check.py")
+    ap.add_argument("envelope")
+    ap.add_argument("--key", required=True)
+    ap.add_argument("--expect-keyid", required=True)
+    a = ap.parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        d = json.load(open(argv[0], encoding="utf-8"))
-        if "payload" in d:
-            d = json.loads(base64.b64decode(d["payload"], validate=True))
+        env = json.load(open(a.envelope, encoding="utf-8"))
+        if not (isinstance(env, dict) and "payload" in env and "signatures" in env):
+            raise ValueError("not a DSSE envelope (a bare statement is never accepted)")
+    except Exception as e:
+        print(f"UNREADABLE: {e}", file=sys.stderr)
+        return 4
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import attest_verify
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        rc = attest_verify.main(
+            [a.envelope, "--key", a.key, "--expect-keyid", a.expect_keyid]
+        )
+    if rc != 0:
+        print(
+            f"VERDICT-NOT-VERIFIED: attest_verify exit {rc} ({out.getvalue().strip() or 'see above'})",
+            file=sys.stderr,
+        )
+        return rc
+    try:
+        d = json.loads(base64.b64decode(env["payload"], validate=True))
         if d.get("predicateType") != VERDICT_TYPE:
             raise ValueError("predicateType is not verdict")
         pred, subjects = d["predicate"], d["subject"]
@@ -119,7 +159,7 @@ def main(argv=None) -> int:
     if why:
         print(f"VERDICT-NOT-TRUSTED: {why}", file=sys.stderr)
         return 8
-    print("VERDICT-ACCEPTED")
+    print(f"VERDICT-ACCEPTED result={pred['result']}")
     return 0
 
 

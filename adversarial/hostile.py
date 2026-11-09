@@ -50,7 +50,15 @@ case(
     "same_key_two_envs",
     pol([E("m1", env(S, [M])), E("m2", env(S, [M]))], [M.id, C.id], keys, art),
 )
-case("one_env_both_keys", pol([E("both", env(S, [M, C]))], [M.id, C.id], keys, art))
+case(
+    "one_env_both_keys(expect accept: envelopes are containers)",
+    pol([E("both", env(S, [M, C]))], [M.id, C.id], keys, art),
+    False,
+)
+case(
+    "one_env_same_key_twice",
+    pol([E("mm", env(S, [M, M]))], [M.id, C.id], keys, art),
+)
 case(
     "one_env_both_keys_plus_extra_m(same statement: m3's M signature is the one in both -> reuse)",
     pol([E("both", env(S, [M, C])), E("m3", env(S, [M]))], [M.id, C.id], keys, art),

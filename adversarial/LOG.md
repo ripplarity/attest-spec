@@ -1,4 +1,31 @@
-# Adversarial log: multi-signer policy (SPEC s12)
+# Adversarial log: multi-signer policy (SPEC s12) and verdict_check (SPEC 6.1)
+
+## 2026-11-09 (second pass): envelopes are containers; verdict_check trust path
+
+Policy decision (review): a dual-signed envelope could always be split into two single-signer envelopes over the
+same statement without either key, so a rule requiring "a distinct envelope per key" could be bypassed by repackaging
+and added no security. s12 rule 3 now reads: each required keyid has its own valid signature (distinct signature
+bytes) over a statement naming the artifact. Matching is a set check, and the 64-envelope cap is gone. Rule 7
+(a signature reused across envelopes gives rc 2) and the KNOWN/mandatory checks stay. Flipped on purpose:
+`one_env_both_keys` (pytest and hostile) is now rc 0. New: a keyid listed twice in one envelope counts once (rc 2
+when the other required key is absent); a split into two envelopes over the same statement is rc 0.
+
+verdict_check (three findings from review, all reproduced and fixed):
+1. An unsigned statement printed VERDICT-ACCEPTED, rc 0. verdict_check now accepts only a DSSE envelope, takes
+   `--key` and `--expect-keyid`, and runs attest_verify's full verification first, returning its code when that
+   is not 0. Tests: a bare statement is rc != 0; a tampered signature is rc 2; a wrong pin is rc 2; a valid
+   envelope is rc 0.
+2. "ACCEPTED" could be read as PASS. It now prints `VERDICT-ACCEPTED result=<PASS|FAIL|INCONCLUSIVE>`, and a test
+   checks that an accepted FAIL prints result=FAIL and no "PASS".
+3. `\d` in the RFC3339 regex matched non-ASCII digits. It is now `[0-9]`. Tests use Arabic-Indic and fullwidth
+   digits in observed_at, and both are rejected.
+Minor, fixed: control equality now compares JSON types recursively ({"a": true} vs {"a": 1}, [1.0] vs [1] fail).
+vectors/run.sh passes the key and pin to verdict_check. The vector bytes and expected codes are unchanged.
+
+Runs on this tree (attest_verify.py fef63230..., verdict_check.py 13ac6e49...): pytest 68 passed; vectors 14/14;
+hostile: no unexpected results; compat row-for-row identical (table header updated to the new verifier sha);
+fuzz 2500 seed 1 (model updated to the set rule): 37 accepts, 0 false accepts, 0 false rejects. Accepts rose
+from 7 because the dual-signed single envelope in the mutation pool now meets the policy.
 
 ## 2026-11-09: envelope reuse (false accept, fixed)
 
