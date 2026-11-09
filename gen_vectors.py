@@ -54,13 +54,13 @@ def env(payload, tweak=None, kid=None):
 
 
 def put(name, e, code, valid, reason, key=None):
-    with open(f"{V}/{name}.dsse.json", "w") as f:
+    with open(f"{V}/{name}.dsse.json", "w", newline="\n") as f:
         json.dump(e, f, indent=2)
         f.write("\n")
     exp = {"valid": valid, "exit_code": code, "reason": reason}
     if key:
         exp["key"] = key
-    with open(f"{V}/{name}.expected.json", "w") as f:
+    with open(f"{V}/{name}.expected.json", "w", newline="\n") as f:
         json.dump(exp, f, indent=2)
         f.write("\n")
 
@@ -188,17 +188,22 @@ _ok = [
     {"name": "known-bad input rejected", "kind": "negative", "expected": "reject", "observed": "reject"},
 ]
 _bad = [dict(_ok[0], observed="reject"), _ok[1]]
-put(
-    "11_verdict_valid",
-    env(jcs(stmt(BASE + "verdict/v1", "transcript.txt", _verdict(_ok)))),
-    0,
-    True,
-    "valid",
-)
-put(
-    "12_verdict_failed_control",
-    env(jcs(stmt(BASE + "verdict/v1", "transcript.txt", _verdict(_bad)))),
-    4,
-    False,
-    "a control observed differs from expected; verdict invalid (signature is good)",
-)
+_bad_inc = dict(_verdict(_bad), result="INCONCLUSIVE")
+_bad_pass = _verdict(_bad)
+
+
+def _vput(name, pred, why):
+    stm = stmt(BASE + "verdict/v1", "transcript.txt", pred)
+    stm["subject"][0]["digest"]["sha256"] = pred["transcript_digest"]
+    put(name, env(jcs(stm)), 0, True, why)
+    e = json.load(open(f"{V}/{name}.expected.json"))
+    e["verdict_check_exit_code"] = 8 if "control" in why else 0
+    with open(f"{V}/{name}.expected.json", "w", newline="\n") as f:
+        json.dump(e, f, indent=2)
+        f.write("\n")
+
+
+_vput("11_verdict_valid", _verdict(_ok), "valid")
+_vput("12_verdict_failed_control", dict(_verdict(_bad), result="FAIL"), "good signature, control failed: record valid, verdict not accepted")
+_vput("13_verdict_inconclusive_failed_control", _bad_inc, "good signature, control failed (INCONCLUSIVE kept as evidence)")
+_vput("14_verdict_pass_failed_control", _bad_pass, "good signature, control failed with PASS: not accepted")

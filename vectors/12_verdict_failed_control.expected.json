@@ -1,5 +1,6 @@
 {
-  "valid": false,
-  "exit_code": 4,
-  "reason": "a control observed differs from expected; verdict invalid (signature is good)"
+  "valid": true,
+  "exit_code": 0,
+  "reason": "good signature, control failed: record valid, verdict not accepted",
+  "verdict_check_exit_code": 8
 }

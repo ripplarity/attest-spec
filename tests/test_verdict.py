@@ -31,10 +31,25 @@ def test_valid():
     assert vc.check_verdict(good()) == ""
 
 
+SUBJ = [{"name": "t.txt", "digest": {"sha256": H}}]
+
+
 def test_failing_control():
     p = good()
     p["controls"][0]["observed"] = "reject"
-    assert "control failed" in vc.check_verdict(p)
+    assert vc.check_verdict(p) == ""
+    assert "control failed" in vc.check_trust(p, SUBJ)
+
+
+def test_type_and_value_match():
+    p = good()
+    p["controls"][0]["expected"], p["controls"][0]["observed"] = "1", 1
+    assert "control failed" in vc.check_trust(p, SUBJ)
+
+
+def test_transcript_must_be_subject():
+    assert vc.check_trust(good(), SUBJ) == ""
+    assert "subject" in vc.check_trust(good(), [{"name": "x", "digest": {"sha256": "b" * 64}}])
 
 
 def test_missing_controls():
@@ -49,7 +64,7 @@ def test_missing_controls():
 def test_no_positive_control():
     p = good()
     p["controls"] = [p["controls"][1]]
-    assert "positive" in vc.check_verdict(p)
+    assert "positive" in vc.check_trust(p, SUBJ)
 
 
 def test_bad_result_enum():
@@ -81,4 +96,5 @@ def _run(name):
 
 def test_cli_vectors():
     assert _run("11_verdict_valid.dsse.json") == 0
-    assert _run("12_verdict_failed_control.dsse.json") == 4
+    for n in ("12_verdict_failed_control", "13_verdict_inconclusive_failed_control", "14_verdict_pass_failed_control"):
+        assert _run(n + ".dsse.json") == 8

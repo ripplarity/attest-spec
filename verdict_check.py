@@ -2,9 +2,9 @@
 """Predicate validator for the `verdict` predicateType (SPEC section 6.1).
 
 Library: `check_verdict(predicate) -> str` ("" when valid, else a reason).
-CLI: `python verdict_check.py FILE` (a bare predicate, a statement, or a DSSE
-envelope); exit 0 valid, 4 invalid. Signature checking is attest_verify.py's
-job; it calls this for the verdict type.
+CLI: `python verdict_check.py ENVELOPE`; exit 0 accepted, 4 malformed shape,
+8 VERDICT-NOT-TRUSTED. Signature checking is attest_verify.py's job; it does
+not call this module.
 """
 
 import base64
@@ -72,36 +72,54 @@ def check_verdict(p) -> str:
             and "observed" in k
         ):
             return f"controls[{i}] needs name, kind (positive|negative), expected, observed"
+    return ""
+
+
+def check_trust(p, subjects) -> str:
+    """Domain rules on a well-shaped predicate; "" = accepted, else why NOT TRUSTED (rc 8)."""
+    for k in p["controls"]:
         if k["expected"] != k["observed"] or type(k["expected"]) is not type(
             k["observed"]
         ):
             return f"control failed: {k['name']} (observed differs from expected)"
-    if not any(k["kind"] == "positive" for k in ctl):
+    if not any(k["kind"] == "positive" for k in p["controls"]):
         return "no positive control present"
+    if not any(
+        isinstance(s, dict)
+        and isinstance(s.get("digest"), dict)
+        and s["digest"].get("sha256") == p["transcript_digest"]
+        for s in subjects
+    ):
+        return "transcript_digest matches no statement subject"
     return ""
 
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1:
-        print("usage: verdict_check.py FILE", file=sys.stderr)
+        print("usage: verdict_check.py ENVELOPE", file=sys.stderr)
         return 2
     try:
         d = json.load(open(argv[0], encoding="utf-8"))
         if "payload" in d:
             d = json.loads(base64.b64decode(d["payload"], validate=True))
-        if "predicate" in d:
-            if d.get("predicateType") != VERDICT_TYPE:
-                raise ValueError("predicateType is not verdict")
-            d = d["predicate"]
+        if d.get("predicateType") != VERDICT_TYPE:
+            raise ValueError("predicateType is not verdict")
+        pred, subjects = d["predicate"], d["subject"]
+        if not isinstance(subjects, list):
+            raise ValueError("subject is not a list")
     except Exception as e:
         print(f"UNREADABLE: {e}", file=sys.stderr)
         return 4
-    why = check_verdict(d)
+    why = check_verdict(pred)
     if why:
-        print(f"INVALID-VERDICT: {why}", file=sys.stderr)
+        print(f"MALFORMED: {why}", file=sys.stderr)
         return 4
-    print("VALID-VERDICT")
+    why = check_trust(pred, subjects)
+    if why:
+        print(f"VERDICT-NOT-TRUSTED: {why}", file=sys.stderr)
+        return 8
+    print("VERDICT-ACCEPTED")
     return 0
 
 

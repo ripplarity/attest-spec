@@ -72,8 +72,7 @@ warns, and exits 5.
 
 ### 6.1 `verdict/v1`: the signed result of probing a software claim
 URI: `https://ripplarity.com/attestation/verdict/v1`. The mandatory fields above apply, plus these predicate
-fields (all REQUIRED unless marked optional). `verdict_check.py` implements them; `attest_verify.py` calls it
-and exits 4 (malformed predicate) on any violation.
+fields (all REQUIRED unless marked optional). `verdict_check.py` implements them; `attest_verify.py` does not call it.
 - `claim{text, source_url?}`: `text` non-empty; `source_url`, if present, an http(s) URL.
 - `subject_tool{name, version}`: the tool probed; both non-empty strings.
 - `probe{id, version, sha256}`: `sha256` is the lowercase-hex SHA-256 of the probe code that ran.
@@ -84,13 +83,17 @@ and exits 4 (malformed predicate) on any violation.
 Normative:
 1. `controls` MUST contain at least one `positive` control (an input the claim says works, run through the same
    probe, showing the probe can see success).
-2. For EVERY control, `observed` MUST equal `expected` (same JSON type and value). If any differs, the verdict is
-   INVALID whatever `result` says: the probe is not trusted. A producer with a failed control MUST NOT sign
-   `PASS` or `FAIL`; it signs nothing, or `INCONCLUSIVE` with the controls recorded as observed (a verifier
-   still rejects that statement under this rule; it is a record, not an accepted verdict).
-3. A verifier MUST reject (exit 4) a verdict whose `result` is outside the enum or whose digests, timestamp or
-   controls break the shapes above.
-4. The statement subject SHOULD be the transcript file, so `--check-subjects` binds it to `transcript_digest`.
+2. For EVERY control, `observed` MUST equal `expected` in both JSON type and value (the string "1" does not
+   equal the number 1). A correctly signed record with a failed control is VALID as a record and NOT ACCEPTED as
+   a verdict. A producer with a failed control MAY sign `INCONCLUSIVE` with the controls recorded as observed;
+   verifiers keep it as evidence and `verdict_check.py` exits 8 (VERDICT-NOT-TRUSTED). The same exit 8 applies
+   to a missing positive control, to `PASS` or `FAIL` with a failed control, and to rule 4.
+3. A verdict whose shape is broken (`result` outside the enum, bad digests, non-UTC timestamp, absent or
+   malformed `controls`) is malformed: `verdict_check.py` exits 4. Exit 0 means accepted.
+4. The transcript file MUST be a statement subject: `transcript_digest` MUST equal the sha256 of one subject,
+   else exit 8.
+5. `attest_verify.py` only registers the URI (signature, subject and mandatory-field checks); the domain rules
+   above run only in `python verdict_check.py <envelope>`.
 Example predicate (shown without the mandatory fields):
 ```json
 {"claim":{"text":"tool X rejects empty input","source_url":"https://example.com/claim"},
@@ -101,7 +104,8 @@ Example predicate (shown without the mandatory fields):
              {"name":"known-bad input rejected","kind":"negative","expected":"reject","observed":"reject"}],
  "observed_at":"2026-01-01T00:00:00Z"}
 ```
-Vectors `11_verdict_valid` (exit 0) and `12_verdict_failed_control` (exit 4, good signature).
+Vectors 11 (valid), 12 (FAIL with failed control), 13 (INCONCLUSIVE with failed control), 14 (PASS with failed
+control): `attest_verify.py` exits 0 on all four; `verdict_check.py` exits 0, 8, 8, 8.
 
 ## 7. Key pinning
 Verifiers MUST be given the trusted key (or its keyid, `--expect-keyid`) out of band; a key found beside the
@@ -147,7 +151,7 @@ lies in a signed predicate, rollback or deletion of attestations (needs a log), 
 are self-reported unless anchored). Non-goals: key revocation, encryption, a network protocol.
 
 ## 11. Test vectors
-`vectors/` holds twelve vectors (ten below, plus two verdict vectors, section 6.1) made with a committed TEST-ONLY key (public and worthless): three valid (one per
+`vectors/` holds fourteen vectors (ten below, plus four verdict vectors, section 6.1) made with a committed TEST-ONLY key (public and worthless): three valid (one per
 implemented predicateType), bad signature, mutated payload byte, unknown predicateType, and three strictness
 vectors (non-canonical S, small-order key, malformed R) and a mixed-order key (prime-order point plus an 8-torsion
-component), all rejected with exit 2. `bash vectors/run.sh` pins the keyid and prints `12/12 OK`.
+component), all rejected with exit 2. `bash vectors/run.sh` pins the keyid and prints `14/14 OK`.
