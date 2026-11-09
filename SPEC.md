@@ -63,8 +63,9 @@ Domain fields are added beside these. predicateTypes (base `https://ripplarity.c
 - `dejaspawn/mirror/v1`, `stillherd/silent/v1`, `stillherd/day/v1` (documented only; see `docs/MIGRATION_other_writers.md`).
   `nukekit/mirror/v1` is DEPRECATED (renamed to dejaspawn); verifiers keep accepting it as a legacy URI.
 - Added in 1.4: `dejaspawn/evidence/v1`, `mictest/participant/v1`, `halflife/receipt/v1`,
-  `canceltogether/campaign/v1`, `buyatheorem/lemma/v1`, `udoot/egress/v1` (Android network-egress receipts;
-  subject `netlog.jsonl`).
+  `canceltogether/campaign/v1`, `buyatheorem/lemma/v1`.
+- Full-URI entries (producers under their own domain): `https://udoot.com/attestation/egress/v1` (Android
+  network-egress receipts; subject `netlog.jsonl`). A predicateType need not sit under the ripplarity base.
 An unknown predicateType is not an error: the verifier checks the signature, prints `VALID-SIGNATURE`,
 warns, and exits 5.
 
