@@ -114,3 +114,11 @@ def test_unreadable_envelope(tmp_path):
     bad = tmp_path / "b.json"
     bad.write_text("{")
     assert run(tmp_path, [e1, str(bad)], [cid, mid], keys) == 4
+
+
+def test_require_keyid_must_be_exact_lowercase_hex(tmp_path):
+    ci, mt, cid, mid, keys = setup()
+    e1, e2 = env(tmp_path / "a.json", [ci]), env(tmp_path / "b.json", [mt])
+    assert run(tmp_path, [e1, e2], [cid.upper(), mid], keys) == 2
+    assert run(tmp_path, [e1, e2], [" " + cid, mid], keys) == 2
+    assert run(tmp_path, [e1, e2], [cid[:-1], mid], keys) == 2

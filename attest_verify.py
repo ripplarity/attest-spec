@@ -491,7 +491,14 @@ def policy_verify(a) -> int:
     """Multi-signer policy (SPEC s12): each required keyid needs a distinct envelope."""
     import itertools
 
-    req = [k.strip().lower() for k in a.require_keyid]
+    req = list(a.require_keyid)
+    for k in req:
+        if len(k) != 64 or any(c not in "0123456789abcdef" for c in k):
+            print(
+                "INVALID: --require-keyid must be 64 lowercase hex chars",
+                file=sys.stderr,
+            )
+            return 2
     if len(set(req)) != len(req):
         print(
             "INVALID: duplicate --require-keyid (one key cannot count twice)",

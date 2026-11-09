@@ -125,7 +125,9 @@ A verifier MAY offer a policy requiring N >= 2 distinct pinned keyids (`--requir
 2. every supplied envelope carries a Statement (section 3) with a subject whose sha256 equals the sha256 of FILE;
 3. each required keyid is matched to a DISTINCT envelope carrying a valid signature by that keyid (an envelope
    signed by both keys still counts once; a missing envelope fails);
-4. the required keyids are pairwise different (a repeated keyid is rejected); `--expect-keyid` is not accepted.
+4. the required keyids are pairwise different (a repeated keyid is rejected); `--expect-keyid` is not accepted;
+5. each `--require-keyid` value is exactly 64 lowercase hex characters, byte for byte; it is never lowercased or
+   trimmed (one byte form everywhere, as for envelope keyids), and any other form exits 2.
 
 Exit codes: 0 policy met; 2 bad signature, unknown signer keyid, required key not supplied, duplicate or fewer than
 two keyids, or policy unmet (missing or reused envelope); 3 an envelope does not name the artifact digest;
