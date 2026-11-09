@@ -11,12 +11,13 @@ The transport is injectable (`post=`) so tests never touch the network.
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import sys
 import urllib.request
 
-from attest_verify import envelope_digest
+from attest_verify import _B, _DOM_PH, _L, _mul, encode_point, envelope_digest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -31,11 +32,37 @@ class AnchorGateError(Exception):
     pass
 
 
+def ed25519ph_sign(seed: bytes, digest64: bytes) -> bytes:
+    """RFC 8032 Ed25519ph (empty context); digest64 = SHA-512(message) is the pre-hash PH(M)."""
+    h = hashlib.sha512(seed).digest()
+    a = int.from_bytes(h[:32], "little")
+    a &= (1 << 254) - 8
+    a |= 1 << 254
+    pub = encode_point(_mul(a, _B))
+    r = (
+        int.from_bytes(hashlib.sha512(_DOM_PH + h[32:] + digest64).digest(), "little")
+        % _L
+    )
+    big_r = encode_point(_mul(r, _B))
+    k = (
+        int.from_bytes(
+            hashlib.sha512(_DOM_PH + big_r + pub + digest64).digest(), "little"
+        )
+        % _L
+    )
+    return big_r + ((r + k * a) % _L).to_bytes(32, "little")
+
+
 def build_entry(env: dict, priv: Ed25519PrivateKey) -> dict:
     """hashedrekord v0.0.1 proposed entry: digest of the envelope (anchors removed), ed25519
     signature over the 32 raw digest bytes, our public key as PEM."""
     digest = envelope_digest(env)
-    sig = priv.sign(bytes.fromhex(digest))
+    seed = priv.private_bytes(
+        serialization.Encoding.Raw,
+        serialization.PrivateFormat.Raw,
+        serialization.NoEncryption(),
+    )
+    sig = ed25519ph_sign(seed, bytes.fromhex(digest))
     pem = priv.public_key().public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
     )
@@ -43,7 +70,7 @@ def build_entry(env: dict, priv: Ed25519PrivateKey) -> dict:
         "apiVersion": "0.0.1",
         "kind": "hashedrekord",
         "spec": {
-            "data": {"hash": {"algorithm": "sha256", "value": digest}},
+            "data": {"hash": {"algorithm": "sha512", "value": digest}},
             "signature": {
                 "content": base64.b64encode(sig).decode(),
                 "publicKey": {"content": base64.b64encode(pem).decode()},

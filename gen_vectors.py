@@ -138,3 +138,26 @@ put(
     False,
     "R is not a valid curve point",
 )
+
+# vector 10: mixed-order key A' = A + T, T an 8-torsion point of order 8 (not prime-order: [L]A' != O)
+from attest_verify import _add, _mul, encode_point, prime_order  # noqa: E402
+
+yy = 2
+while True:
+    q = decompress(yy.to_bytes(32, "little"))
+    if q is not None:
+        t = _mul(_L, q)
+        if _mul(4, t) != (0, 1):  # order exactly 8
+            break
+    yy += 1
+mixed = encode_point(_add(decompress(raw), t))
+assert not prime_order(decompress(mixed)) and decompress(mixed) is not None
+open(f"{V}/10_mixed_order_key.pub.hex", "w").write(mixed.hex() + "\n")
+put(
+    "10_mixed_order_key",
+    env(inv, kid=keyid(mixed)),
+    2,
+    False,
+    "public key has a torsion component ([L]A != O) and must be rejected",
+    key="vectors/10_mixed_order_key.pub.hex",
+)

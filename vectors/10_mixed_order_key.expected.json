@@ -1,0 +1,6 @@
+{
+  "valid": false,
+  "exit_code": 2,
+  "reason": "public key has a torsion component ([L]A != O) and must be rejected",
+  "key": "vectors/10_mixed_order_key.pub.hex"
+}

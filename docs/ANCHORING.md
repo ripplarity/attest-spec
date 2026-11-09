@@ -4,7 +4,7 @@ Code: `anchor.py` (writer, the only network-capable file) and `attest_verify.py 
 Tests use a synthetic 4-leaf log and an injected transport; no test or default path contacts a network.
 
 ## What it publishes
-To the public, append-only Rekor log, permanently and irreversibly: the sha256 of the envelope (with `anchors`
+To the public, append-only Rekor log, permanently and irreversibly: the sha512 of the envelope (with `anchors`
 removed), the ed25519 signature over that digest, and the producer public key (PEM). Nothing about the artefact
 contents is published, but the key links every anchored artefact to its producer.
 
@@ -39,3 +39,9 @@ SHA-256 digest this writer sends. `build_entry` therefore needs a design change 
 scheme, or a different entry kind such as `dsse`), which would also change the SPEC section 8 digest rule. No variant
 was tried; the request was replayed once only to capture the error body. Offline verification remains tested only
 against the synthetic log.
+
+## SPEC 1.4 (branch spec-1.4, not yet released)
+`build_entry` now sends `{algorithm: sha512, value: sha512(JCS(envelope minus anchors))}` and an Ed25519ph signature (RFC 8032,
+empty context, PH(M) = that digest), which is the form the error above asks for. The signer is pure Python (`anchor.ed25519ph_sign`)
+and reproduces the RFC 8032 section 7.3 "abc" test vector exactly (tested). `--check-anchors` verifies the same form offline.
+NOT yet tried against the live log in this pass: whether Rekor accepts exactly this entry is untested.
