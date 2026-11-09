@@ -117,3 +117,18 @@ are self-reported unless anchored). Non-goals: key revocation, encryption, a net
 implemented predicateType), bad signature, mutated payload byte, unknown predicateType, and three strictness
 vectors (non-canonical S, small-order key, malformed R) and a mixed-order key (prime-order point plus an 8-torsion
 component), all rejected with exit 2. `bash vectors/run.sh` pins the keyid and prints `10/10 OK`.
+
+## 12. Multi-signer policy (optional)
+A verifier MAY offer a policy requiring N >= 2 distinct pinned keyids (`--require-keyid K1 --require-keyid K2
+--artifact FILE ENV1 ENV2 ... --key KEYS`). It accepts only if ALL hold, offline:
+1. every supplied envelope passes sections 1-5 (strict signatures; every signature keyid is a supplied key);
+2. every supplied envelope carries a Statement (section 3) with a subject whose sha256 equals the sha256 of FILE;
+3. each required keyid is matched to a DISTINCT envelope carrying a valid signature by that keyid (an envelope
+   signed by both keys still counts once; a missing envelope fails);
+4. the required keyids are pairwise different (a repeated keyid is rejected); `--expect-keyid` is not accepted.
+
+Exit codes: 0 policy met; 2 bad signature, unknown signer keyid, required key not supplied, duplicate or fewer than
+two keyids, or policy unmet (missing or reused envelope); 3 an envelope does not name the artifact digest;
+4 unreadable or malformed envelope, key or artifact. Precedence: 4, then 2 (signature), then 3, then 2 (policy).
+This stops a valid CI attestation from a compromised pipeline being accepted without the maintainer's key; it does
+not help if both keys are compromised.

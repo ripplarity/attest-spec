@@ -48,6 +48,17 @@ python -m pytest -q tests
 
 The normative text is [`SPEC.md`](SPEC.md). Writing attestations from another tool: [`docs/MIGRATION_other_writers.md`](docs/MIGRATION_other_writers.md).
 
+## Example policy: CI key and maintainer key
+
+Accept an artifact only if a pinned CI key and a pinned maintainer key each signed a separate envelope naming its sha256 (`SPEC.md`, section 12):
+
+```bash
+python attest_verify.py ci.dsse.json maint.dsse.json --key keys.json \
+  --require-keyid <ci-keyid> --require-keyid <maintainer-keyid> --artifact pkg.tgz
+```
+
+Exit 0 means both hold. A missing envelope, the same key twice or a bad signature exits 2; a digest that differs from the artifact exits 3; an unreadable or malformed file exits 4.
+
 ## Evidence
 
 | Check | Command |
