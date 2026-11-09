@@ -1,7 +1,7 @@
 # Compatibility comparison: verifier 1.3 vs 1.4
 
 1.3 verifier sha256 `ab2681f145e5479dd07a37333a95f3179424ff1c8b94b9cb54bcb3742bbdd5d0` (compat/2026-11-09.md)
-1.4 verifier sha256 `92310326f490c5dd9c5f190a6598fe3110c76bc6376dd21a1ad46b525e2261c4` (compat/2026-11-09_v1.4.md)
+1.4 verifier sha256 `89fd3a549bd7caf547fb2c29e5b8c943df868074aaa8c004883f6ee3f3813cbe` (shipping verifier, compat/2026-11-09_v1.4b.md; rc-for-rc identical to the earlier 1.4 run with sha `92310326f490c5dd9c5f190a6598fe3110c76bc6376dd21a1ad46b525e2261c4`, compat/2026-11-09_v1.4.md, 13 files)
 
 | repo | file | file sha256 | rc 1.3 | rc 1.4 | same |
 |---|---|---|---|---|---|
