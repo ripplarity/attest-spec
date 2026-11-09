@@ -95,7 +95,7 @@ verifier enforces this sha256; an explicit `--rekor-key` is trusted as given and
 signature is not verified in this revision. Rekor is contacted only for freshness when `--online` is given; that is
 NOT implemented (the flag is rejected). Anchoring MUST be opt-in (`anchor.py --anchor rekor`, requires explicit
 maintainer approval: set `ATTEST_ANCHOR_OK=1`), default OFF, and publishes the digest permanently and irrevocably.
-See `docs/ANCHORING.md`.
+Live Rekor acceptance of this entry format is UNTESTED as of 2026-11-09. See `docs/ANCHORING.md`.
 
 ## 9. Verifier exit codes and precedence
 0 valid; 2 usage (no pin), bad signature, or pin mismatch (reason printed); 3 subject digest mismatch
