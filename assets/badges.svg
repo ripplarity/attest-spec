@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="551" height="22" viewBox="0 0 551 22" role="img" aria-label="DSSE + in-toto v1, ed25519, pinned keyid, spec CC-BY-4.0, code Apache-2.0">
+  <style>text{font:600 11px -apple-system,Segoe UI,Helvetica,Arial,sans-serif;fill:#fff}</style>
+  <rect x="0" y="0" width="135" height="22" rx="4" fill="#1B2A6B"/><text x="68" y="15" text-anchor="middle">DSSE + in-toto v1</text>
+  <rect x="141" y="0" width="163" height="22" rx="4" fill="#0B4A55"/><text x="222" y="15" text-anchor="middle">ed25519, pinned keyid</text>
+  <rect x="310" y="0" width="114" height="22" rx="4" fill="#2E7D5B"/><text x="367" y="15" text-anchor="middle">spec CC-BY-4.0</text>
+  <rect x="430" y="0" width="121" height="22" rx="4" fill="#2E7D5B"/><text x="490" y="15" text-anchor="middle">code Apache-2.0</text>
+</svg>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="attest-spec">
+  <title>attest-spec</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1B2A6B"/><stop offset="1" stop-color="#0B4A55"/></linearGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7DFFD4"/><stop offset="1" stop-color="#8B7CFF"/></linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="60" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="70" fill="none" stroke="url(#acc)" stroke-width="14" stroke-dasharray="22 8"/><path d="M98 130 L120 152 L162 106" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
