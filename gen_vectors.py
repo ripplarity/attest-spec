@@ -10,14 +10,16 @@ from attest_verify import _L, _P, BASE, PAYLOAD_TYPE, decompress, jcs, keyid, pa
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-V = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectors")
+V = os.environ.get("VECTORS_OUT") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "vectors"
+)
 seed = hashlib.sha256(b"attest-spec TEST-ONLY key").digest()
 priv = Ed25519PrivateKey.from_private_bytes(seed)
 raw = priv.public_key().public_bytes(
     serialization.Encoding.Raw, serialization.PublicFormat.Raw
 )
-open(f"{V}/test_key.ed25519", "w").write(seed.hex() + "\n")
-open(f"{V}/test_key.pub.hex", "w").write(raw.hex() + "\n")
+open(f"{V}/test_key.ed25519", "w", newline="\n").write(seed.hex() + "\n")
+open(f"{V}/test_key.pub.hex", "w", newline="\n").write(raw.hex() + "\n")
 
 
 def stmt(ptype, name, extra):
@@ -118,7 +120,7 @@ put(
     "S >= L (malleable signature) must be rejected",
 )
 identity = (1).to_bytes(32, "little")  # point (0,1): small order
-open(f"{V}/08_small_order_key.pub.hex", "w").write(identity.hex() + "\n")
+open(f"{V}/08_small_order_key.pub.hex", "w", newline="\n").write(identity.hex() + "\n")
 put(
     "08_small_order_key",
     env(inv, lambda s: identity + bytes(32), kid=keyid(identity)),
@@ -152,7 +154,7 @@ while True:
     yy += 1
 mixed = encode_point(_add(decompress(raw), t))
 assert not prime_order(decompress(mixed)) and decompress(mixed) is not None
-open(f"{V}/10_mixed_order_key.pub.hex", "w").write(mixed.hex() + "\n")
+open(f"{V}/10_mixed_order_key.pub.hex", "w", newline="\n").write(mixed.hex() + "\n")
 put(
     "10_mixed_order_key",
     env(inv, kid=keyid(mixed)),

@@ -98,3 +98,16 @@ def test_cli_vectors():
     assert _run("11_verdict_valid.dsse.json") == 0
     for n in ("12_verdict_failed_control", "13_verdict_inconclusive_failed_control", "14_verdict_pass_failed_control"):
         assert _run(n + ".dsse.json") == 8
+
+
+def test_gen_vectors_reproduces_committed_bytes(tmp_path):
+    import os
+
+    env = dict(os.environ, VECTORS_OUT=str(tmp_path))
+    r = subprocess.run([sys.executable, str(ROOT / "gen_vectors.py")], cwd=ROOT, env=env, capture_output=True)
+    assert r.returncode == 0, r.stderr
+    gen = sorted(p.name for p in tmp_path.iterdir())
+    committed = sorted(p.name for p in (ROOT / "vectors").iterdir() if p.name != "run.sh" and p.name != "README.md")
+    assert gen == committed
+    for n in gen:  # Ed25519 is deterministic: nothing excluded
+        assert (tmp_path / n).read_bytes() == (ROOT / "vectors" / n).read_bytes(), n
