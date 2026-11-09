@@ -1,0 +1,6 @@
+{
+  "valid": true,
+  "exit_code": 0,
+  "reason": "good signature, control failed (INCONCLUSIVE kept as evidence)",
+  "verdict_check_exit_code": 8
+}

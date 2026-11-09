@@ -37,6 +37,7 @@ KNOWN = {
     BASE + "halflife/receipt/v1",
     BASE + "canceltogether/campaign/v1",
     BASE + "buyatheorem/lemma/v1",
+    BASE + "verdict/v1",
     "https://udoot.com/attestation/egress/v1",  # separate developer identity; full URI, not under BASE
 }
 RUN_MODES = {"REAL", "MOCK", "FIXTURE", "DRY-RUN"}

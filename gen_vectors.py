@@ -10,14 +10,16 @@ from attest_verify import _L, _P, BASE, PAYLOAD_TYPE, decompress, jcs, keyid, pa
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-V = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectors")
+V = os.environ.get("VECTORS_OUT") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "vectors"
+)
 seed = hashlib.sha256(b"attest-spec TEST-ONLY key").digest()
 priv = Ed25519PrivateKey.from_private_bytes(seed)
 raw = priv.public_key().public_bytes(
     serialization.Encoding.Raw, serialization.PublicFormat.Raw
 )
-open(f"{V}/test_key.ed25519", "w").write(seed.hex() + "\n")
-open(f"{V}/test_key.pub.hex", "w").write(raw.hex() + "\n")
+open(f"{V}/test_key.ed25519", "w", newline="\n").write(seed.hex() + "\n")
+open(f"{V}/test_key.pub.hex", "w", newline="\n").write(raw.hex() + "\n")
 
 
 def stmt(ptype, name, extra):
@@ -54,13 +56,13 @@ def env(payload, tweak=None, kid=None):
 
 
 def put(name, e, code, valid, reason, key=None):
-    with open(f"{V}/{name}.dsse.json", "w") as f:
+    with open(f"{V}/{name}.dsse.json", "w", newline="\n") as f:
         json.dump(e, f, indent=2)
         f.write("\n")
     exp = {"valid": valid, "exit_code": code, "reason": reason}
     if key:
         exp["key"] = key
-    with open(f"{V}/{name}.expected.json", "w") as f:
+    with open(f"{V}/{name}.expected.json", "w", newline="\n") as f:
         json.dump(exp, f, indent=2)
         f.write("\n")
 
@@ -118,7 +120,7 @@ put(
     "S >= L (malleable signature) must be rejected",
 )
 identity = (1).to_bytes(32, "little")  # point (0,1): small order
-open(f"{V}/08_small_order_key.pub.hex", "w").write(identity.hex() + "\n")
+open(f"{V}/08_small_order_key.pub.hex", "w", newline="\n").write(identity.hex() + "\n")
 put(
     "08_small_order_key",
     env(inv, lambda s: identity + bytes(32), kid=keyid(identity)),
@@ -152,7 +154,7 @@ while True:
     yy += 1
 mixed = encode_point(_add(decompress(raw), t))
 assert not prime_order(decompress(mixed)) and decompress(mixed) is not None
-open(f"{V}/10_mixed_order_key.pub.hex", "w").write(mixed.hex() + "\n")
+open(f"{V}/10_mixed_order_key.pub.hex", "w", newline="\n").write(mixed.hex() + "\n")
 put(
     "10_mixed_order_key",
     env(inv, kid=keyid(mixed)),
@@ -161,3 +163,49 @@ put(
     "public key has a torsion component ([L]A != O) and must be rejected",
     key="vectors/10_mixed_order_key.pub.hex",
 )
+
+
+# ---- verdict predicateType (SPEC 6.1) ----
+def _verdict(controls):
+    def h(s):
+        return hashlib.sha256(s.encode()).hexdigest()
+
+    return {
+        "claim": {
+            "text": "tool X rejects empty input",
+            "source_url": "https://example.com/claim",
+        },
+        "subject_tool": {"name": "example-tool", "version": "1.0.0"},
+        "probe": {"id": "empty-input", "version": "1", "sha256": h("probe-code")},
+        "inputs_digest": h("inputs"),
+        "controls": controls,
+        "result": "PASS",
+        "transcript_digest": h("transcript"),
+        "observed_at": "2026-01-01T00:00:00Z",
+    }
+
+
+_ok = [
+    {"name": "known-good input accepted", "kind": "positive", "expected": "accept", "observed": "accept"},
+    {"name": "known-bad input rejected", "kind": "negative", "expected": "reject", "observed": "reject"},
+]
+_bad = [dict(_ok[0], observed="reject"), _ok[1]]
+_bad_inc = dict(_verdict(_bad), result="INCONCLUSIVE")
+_bad_pass = _verdict(_bad)
+
+
+def _vput(name, pred, why):
+    stm = stmt(BASE + "verdict/v1", "transcript.txt", pred)
+    stm["subject"][0]["digest"]["sha256"] = pred["transcript_digest"]
+    put(name, env(jcs(stm)), 0, True, why)
+    e = json.load(open(f"{V}/{name}.expected.json"))
+    e["verdict_check_exit_code"] = 8 if "control" in why else 0
+    with open(f"{V}/{name}.expected.json", "w", newline="\n") as f:
+        json.dump(e, f, indent=2)
+        f.write("\n")
+
+
+_vput("11_verdict_valid", _verdict(_ok), "valid")
+_vput("12_verdict_failed_control", dict(_verdict(_bad), result="FAIL"), "good signature, control failed: record valid, verdict not accepted")
+_vput("13_verdict_inconclusive_failed_control", _bad_inc, "good signature, control failed (INCONCLUSIVE kept as evidence)")
+_vput("14_verdict_pass_failed_control", _bad_pass, "good signature, control failed with PASS: not accepted")
