@@ -30,7 +30,7 @@ A signature only means something if you know whose key it is. This format makes 
 ```bash
 pip install cryptography        # the only dependency (Python 3.10+)
 python attest_verify.py X.dsse.json --key <hex pubkey | keys.json> --expect-keyid <keyid>
-bash vectors/run.sh             # expects 9/9 OK
+bash vectors/run.sh             # expects 10/10 OK
 python -m pytest -q tests
 ```
 
@@ -52,7 +52,7 @@ The normative text is [`SPEC.md`](SPEC.md). Writing attestations from another to
 
 | Check | Command |
 |---|---|
-| 9 test vectors, valid and invalid (bad signature, mutated payload, unknown predicate type, …) | `bash vectors/run.sh` |
+| 10 test vectors, valid and invalid (bad signature, mutated payload, unknown predicate type, …) | `bash vectors/run.sh` |
 | Verifier and anchoring tests | `python -m pytest -q tests` |
 
 ## Limits
