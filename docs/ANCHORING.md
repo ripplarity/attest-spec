@@ -44,4 +44,4 @@ against the synthetic log.
 `build_entry` now sends `{algorithm: sha512, value: sha512(JCS(envelope minus anchors))}` and an Ed25519ph signature (RFC 8032,
 empty context, PH(M) = that digest), which is the form the error above asks for. The signer is pure Python (`anchor.ed25519ph_sign`)
 and reproduces the RFC 8032 section 7.3 "abc" test vector exactly (tested). `--check-anchors` verifies the same form offline.
-NOT yet tried against the live log in this pass: whether Rekor accepts exactly this entry is untested.
+TESTED LIVE 2026-11-09: Rekor accepted exactly this entry form. Log index 3768163947. The anchored envelope was a throwaway fixture statement signed by a dedicated anchoring key; `attest_verify.py --check-anchors --rekor-key rekor.pub` on it prints `ANCHORS-OK 1`. Only the log index is recorded here on purpose.
